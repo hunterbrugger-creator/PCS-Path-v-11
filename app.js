@@ -693,6 +693,7 @@ function drawProfileTab() {
   h += `<div class="card"><div class="dlbl">What applies to you</div><div class="ts" style="margin-bottom:8px">These control which tasks show on your checklist.</div>` +
     FLAG_OPTS.map(f => `<div class="rule"><div style="flex:1"><div class="rt">${esc(f[1])}</div><div class="ts">${esc(f[2])}</div></div>${toggle(`onchange="flipFlag('${f[0]}',this.checked)"`, p.flags[f[0]], f[1])}</div>`).join('') + '</div>';
   h += roleRequestCard();
+  h += shareButton('Know someone else PCSing? Share PCS Path');
   h += `<button class="ibtn" style="width:100%" onclick="switchRole()">${me.roles.length > 1 ? 'Switch role' : 'Sign out'}</button>`;
   el('mprofile').innerHTML = h;
 }
@@ -947,11 +948,15 @@ function drawMpf() {
   el('mp-sub').textContent = baseName(me.base_id) + ' MPF';
   drawProfiles(); drawMaster(); drawRules(); drawInbound(); drawUsers();
 }
+function shareButton(label) {
+  return `<a class="ibtn" href="share.html" style="display:block;text-align:center;text-decoration:none;padding:9px"><i class="ti ti-share" aria-hidden="true"></i> ${esc(label)}</a>`;
+}
 function drawProfiles() {
   const pend = S.profiles.filter(p => p.status === 'pending' && p.base_id === me.base_id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const bg = el('bbadge'); bg.textContent = pend.length; bg.classList.toggle('on', pend.length > 0);
-  if (!pend.length) { el('bprof').innerHTML = emp('ti-user-check', 'No profiles waiting'); return; }
-  el('bprof').innerHTML = pend.map(a => `<div class="card"><div class="row">${avatar(a)}<div style="flex:1"><div class="tn">${esc(a.name)}</div><div class="ts">${esc(a.unit || 'No unit')} · ${esc(a.email)}</div></div>${pill('pa', 'Pending')}</div><div class="dmeta" style="margin-top:11px">${profileSummary(a)}</div>` +
+  const invite = shareButton('Invite members: text, email or QR code');
+  if (!pend.length) { el('bprof').innerHTML = emp('ti-user-check', 'No profiles waiting') + invite; return; }
+  el('bprof').innerHTML = invite + pend.map(a => `<div class="card"><div class="row">${avatar(a)}<div style="flex:1"><div class="tn">${esc(a.name)}</div><div class="ts">${esc(a.unit || 'No unit')} · ${esc(a.email)}</div></div>${pill('pa', 'Pending')}</div><div class="dmeta" style="margin-top:11px">${profileSummary(a)}</div>` +
     (ui.returnFor === a.id ? `<label class="fl" for="rt-${a.id}">What needs fixing</label><textarea class="fi" id="rt-${a.id}" placeholder="Your departure date does not match your orders"></textarea><div class="brow"><button class="pbtn bgreen" onclick="returnProfile('${a.id}')">Send back with note</button><button class="ibtn" onclick="ui.returnFor=null;drawProfiles()">Cancel</button></div>`
       : `<div class="brow"><button class="sbtn" style="flex:1" onclick="approveProfile('${a.id}')">Approve and unlock</button><button class="ibtn dg" onclick="ui.returnFor='${a.id}';drawProfiles()">Send back</button></div>`) + '</div>').join('');
 }

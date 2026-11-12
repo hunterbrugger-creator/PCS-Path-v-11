@@ -2,8 +2,8 @@
 // App files: network first (so updates show up), falling back to the saved copy.
 // Icons and the Supabase library from the CDN: saved copy first.
 // Database calls are never cached here; store.js keeps its own offline copy.
-const CACHE = 'pcspath-v12b';
-const SHELL = ['./', './index.html', './app.js', './store.js', './seed.js', './config.js', './manifest.webmanifest', './icon.svg'];
+const CACHE = 'pcspath-v12c';
+const SHELL = ['./', './index.html', './app.js', './store.js', './seed.js', './config.js', './manifest.webmanifest', './icon.svg', './share.html'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
