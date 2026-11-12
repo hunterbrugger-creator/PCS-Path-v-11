@@ -2,7 +2,7 @@
 // App files: network first (so updates show up), falling back to the saved copy.
 // Icons and the Supabase library from the CDN: saved copy first.
 // Database calls are never cached here; store.js keeps its own offline copy.
-const CACHE = 'pcspath-v12';
+const CACHE = 'pcspath-v12b';
 const SHELL = ['./', './index.html', './app.js', './store.js', './seed.js', './config.js', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', e => {
@@ -21,7 +21,9 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
 
   if (url.origin === location.origin) {
-    e.respondWith(fetch(req).then(res => {
+    // no-cache: always ask GitHub Pages for the newest file, so an update
+    // (like a new config.js) shows up on the next load instead of 10 minutes later.
+    e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return res;
     }).catch(() => caches.match(req).then(r => r || caches.match('./index.html'))));
