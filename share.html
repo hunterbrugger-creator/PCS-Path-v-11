@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Share PCS Path</title>
+<meta name="description" content="Get PCS Path on your phone: one checklist for your PCS move.">
+<meta property="og:title" content="PCS Path">
+<meta property="og:description" content="Your PCS move, one checklist, start to finish.">
+<meta name="theme-color" content="#1A5FA8">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+:root{--b1:#fff;--b2:#f6f5f3;--b3:#edebe7;--t1:#1a1a18;--t2:#61605c;--t3:#8a8984;--d3:rgba(0,0,0,.11);--d2:rgba(0,0,0,.2);--link:#1A5FA8;
+--fn:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+@media(prefers-color-scheme:dark){:root{--b1:#1f1f1d;--b2:#2a2a27;--b3:#141413;--t1:#f0ede8;--t2:#b3b1a9;--t3:#87867f;--d3:rgba(255,255,255,.1);--d2:rgba(255,255,255,.18);--link:#7FB2EA}}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;background:var(--b3);font-family:var(--fn);color:var(--t1);font-size:14px;-webkit-font-smoothing:antialiased}
+body{display:flex;justify-content:center;align-items:flex-start;padding:18px 0 44px}
+.shell{width:390px;background:var(--b1);border-radius:22px;overflow:hidden;box-shadow:0 6px 40px rgba(0,0,0,.13)}
+@media(max-width:430px){body{padding:0}.shell{width:100%;border-radius:0;min-height:100vh;box-shadow:none}}
+.hero{padding:30px 22px 24px;text-align:center;background:linear-gradient(160deg,#1A5FA8,#0D4680);color:#fff}
+.hero img{width:56px;height:56px;border-radius:14px;box-shadow:0 4px 14px rgba(0,0,0,.2)}
+.hero h1{font-size:22px;font-weight:600;letter-spacing:-.02em;margin-top:12px}
+.hero p{color:rgba(255,255,255,.86);font-size:12.5px;margin-top:6px;line-height:1.5}
+.pad{padding:14px;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--b1);border:1px solid var(--d3);border-radius:13px;padding:14px}
+.lbl{font-size:10.5px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px}
+.qr{display:flex;flex-direction:column;align-items:center;gap:10px}
+.qr .box{background:#fff;border-radius:12px;padding:10px;width:200px;height:200px;border:1px solid var(--d3)}
+.qr .box svg{width:100%;height:100%;display:block}
+.qr p{font-size:12px;color:var(--t2);text-align:center;line-height:1.5}
+.link{display:flex;gap:8px;align-items:center;background:var(--b2);border-radius:9px;padding:9px 11px;font-size:12px;color:var(--t2);word-break:break-all}
+.link i{font-size:15px;color:var(--t3);flex-shrink:0}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{display:flex;align-items:center;justify-content:center;gap:7px;border:none;border-radius:9px;padding:11px 10px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:var(--fn);text-decoration:none;color:#fff;background:#1A5FA8}
+.btn i{font-size:16px}
+.btn.alt{background:var(--b2);color:var(--t1);border:1px solid var(--d3)}
+.btn.wide{grid-column:1/-1}
+textarea{width:100%;min-height:118px;padding:10px 11px;font-size:13px;line-height:1.5;border:1px solid var(--d2);border-radius:9px;background:var(--b1);color:var(--t1);font-family:var(--fn);resize:vertical;outline:none}
+textarea:focus{border-color:#1A5FA8}
+.hint{font-size:11px;color:var(--t3);margin-top:6px;line-height:1.45}
+.steps{display:flex;flex-direction:column;gap:10px}
+.step{display:flex;gap:10px;font-size:12.5px;color:var(--t2);line-height:1.5}
+.num{width:22px;height:22px;border-radius:50%;background:#E6F1FB;color:#0D4680;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.tabs{display:flex;background:var(--b2);border-radius:9px;padding:3px;gap:3px;margin-bottom:12px}
+.tb{flex:1;padding:8px;font-size:12px;font-weight:600;border:none;border-radius:6px;cursor:pointer;background:none;color:var(--t2);font-family:var(--fn)}
+.tb.on{background:var(--b1);color:var(--t1);box-shadow:0 1px 2px rgba(0,0,0,.07)}
+.os{display:none}.os.on{display:flex}
+.open{margin-top:2px}
+.toast{position:fixed;left:50%;top:14px;transform:translate(-50%,-16px);opacity:0;pointer-events:none;background:#232321;color:#fff;padding:10px 14px;border-radius:11px;font-size:12.5px;z-index:50;transition:opacity .2s,transform .2s}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #1A5FA8;outline-offset:2px}
+.foot{text-align:center;font-size:11px;color:var(--t3);padding:4px 0 10px;line-height:1.6}
+</style>
+</head>
+<body>
+<div class="shell">
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="hero">
+<img src="icon.svg" alt="">
+<h1>Share PCS Path</h1>
+<p>One checklist for a PCS move, from out-processing to in-processing</p>
+</div>
+<div class="pad">
+
+<div class="card qr">
+<div class="lbl" style="margin:0">Scan with a phone camera</div>
+<div class="box" id="qr" role="img" aria-label="QR code that opens PCS Path"></div>
+<p>Point the camera at the code and tap the link that pops up. Good for briefings, slides or a printed flyer.</p>
+<div class="link" style="width:100%"><i class="ti ti-link" aria-hidden="true"></i><span id="url"></span></div>
+</div>
+
+<div class="card">
+<div class="lbl">Send it</div>
+<label class="lbl" for="msg" style="display:block;text-transform:none;letter-spacing:0;font-size:12px;color:var(--t2);font-weight:600">Message</label>
+<textarea id="msg"></textarea>
+<div class="hint">Edit the message if you like. The buttons below use whatever is in the box.</div>
+<div class="btns" style="margin-top:10px">
+<a class="btn" id="sms" href="#"><i class="ti ti-message" aria-hidden="true"></i>Text it</a>
+<a class="btn" id="mail" href="#"><i class="ti ti-mail" aria-hidden="true"></i>Email it</a>
+<button class="btn alt" id="copy" type="button"><i class="ti ti-copy" aria-hidden="true"></i>Copy message</button>
+<button class="btn alt" id="copylink" type="button"><i class="ti ti-link" aria-hidden="true"></i>Copy link</button>
+<button class="btn alt wide" id="native" type="button" hidden><i class="ti ti-share" aria-hidden="true"></i>More ways to share</button>
+</div>
+</div>
+
+<div class="card">
+<div class="lbl">Put it on your home screen</div>
+<div class="tabs" role="group" aria-label="Phone type">
+<button class="tb on" id="t-ios" type="button" aria-pressed="true">iPhone</button>
+<button class="tb" id="t-and" type="button" aria-pressed="false">Android</button>
+</div>
+<div class="steps os on" id="os-ios" style="flex-direction:column">
+<div class="step"><span class="num">1</span><span>Open the link in <b>Safari</b>.</span></div>
+<div class="step"><span class="num">2</span><span>Tap the <b>Share</b> button <i class="ti ti-share-2" aria-hidden="true"></i> at the bottom of the screen.</span></div>
+<div class="step"><span class="num">3</span><span>Scroll down and tap <b>Add to Home Screen</b>, then <b>Add</b>.</span></div>
+<div class="step"><span class="num">4</span><span>Open PCS Path from your home screen and tap <b>Create an account</b>.</span></div>
+</div>
+<div class="steps os" id="os-and" style="flex-direction:column">
+<div class="step"><span class="num">1</span><span>Open the link in <b>Chrome</b>.</span></div>
+<div class="step"><span class="num">2</span><span>Tap the <b>&#8942;</b> menu at the top right.</span></div>
+<div class="step"><span class="num">3</span><span>Tap <b>Add to Home screen</b> or <b>Install app</b>, then <b>Install</b>.</span></div>
+<div class="step"><span class="num">4</span><span>Open PCS Path from your home screen and tap <b>Create an account</b>.</span></div>
+</div>
+<div class="hint" style="margin-top:12px">It opens full screen like any other app and keeps your checklist available without signal. Your base MPF approves new accounts before the checklist unlocks.</div>
+</div>
+
+<a class="btn open" id="open" href="./"><i class="ti ti-arrow-right" aria-hidden="true"></i>Open PCS Path</a>
+<div class="foot">PCS Path prototype &middot; share with people taking part in the pilot</div>
+</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+<script>
+(function () {
+  'use strict';
+  var appUrl = new URL('./', location.href).href;
+  var el = function (id) { return document.getElementById(id); };
+  var msg = el('msg');
+  msg.value = 'Hey! I\'m piloting PCS Path, an app that turns your whole PCS out-processing and in-processing into one checklist with due dates, office hours and reminders.\n\nOpen it on your phone, add it to your home screen, and sign up with your work email:\n' + appUrl;
+  el('url').textContent = appUrl;
+
+  var t;
+  function toast(s) { var x = el('toast'); x.textContent = s; x.className = 'toast on'; clearTimeout(t); t = setTimeout(function () { x.className = 'toast'; }, 2600); }
+
+  function refreshLinks() {
+    var body = encodeURIComponent(msg.value);
+    // iPhone and Android both accept sms:?&body=
+    el('sms').href = 'sms:?&body=' + body;
+    el('mail').href = 'mailto:?subject=' + encodeURIComponent('Try PCS Path for your PCS') + '&body=' + body;
+  }
+  msg.addEventListener('input', refreshLinks);
+  refreshLinks();
+
+  function copy(text, done) {
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(function () { toast(done); }, fallback);
+    } else fallback();
+    function fallback() {
+      var ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); toast(done); } catch (e) { toast('Select the text and copy it yourself.'); }
+      document.body.removeChild(ta);
+    }
+  }
+  el('copy').addEventListener('click', function () { copy(msg.value, 'Message copied. Paste it into any chat.'); });
+  el('copylink').addEventListener('click', function () { copy(appUrl, 'Link copied.'); });
+
+  if (navigator.share) {
+    el('native').hidden = false;
+    el('native').addEventListener('click', function () {
+      navigator.share({ title: 'PCS Path', text: msg.value }).catch(function () {});
+    });
+  }
+
+  function os(which) {
+    ['ios', 'and'].forEach(function (k) {
+      el('os-' + k).classList.toggle('on', k === which);
+      el('t-' + k).classList.toggle('on', k === which);
+      el('t-' + k).setAttribute('aria-pressed', k === which ? 'true' : 'false');
+    });
+  }
+  el('t-ios').addEventListener('click', function () { os('ios'); });
+  el('t-and').addEventListener('click', function () { os('and'); });
+  if (/android/i.test(navigator.userAgent)) os('and');
+
+  try {
+    var qr = window.qrcode(0, 'M');
+    qr.addData(appUrl);
+    qr.make();
+    el('qr').innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  } catch (e) {
+    el('qr').innerHTML = '<p style="padding:60px 10px;text-align:center;color:#61605c;font-size:12px">QR code needs an internet connection. Use the link below instead.</p>';
+  }
+})();
+</script>
+</body>
+</html>
