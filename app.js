@@ -20,11 +20,12 @@ const ROLE_META = {
   worker: { n: 'Office worker', d: 'Sign off members at your office', i: 'ti-clipboard-check', bg: '#E9F3DD', fg: '#3C6E12' },
   lead: { n: 'Office lead admin', d: 'Scheduling, requests, office setup', i: 'ti-shield-half', bg: '#E1F5EE', fg: '#0A5344' },
   counsel: { n: 'Base counselor', d: 'Out-processing caseload', i: 'ti-user-check', bg: '#E6F1FB', fg: '#0D4680' },
+  css: { n: 'Squadron CSS', d: 'Assign sponsors for your squadron', i: 'ti-id-badge-2', bg: '#FBEEE0', fg: '#8A4B10' },
   mpf: { n: 'Base MPF super admin', d: 'Profiles, master list, users', i: 'ti-building', bg: '#E9F3DD', fg: '#3C6E12' },
   cmd: { n: 'Commander', d: 'Squadron dashboards', i: 'ti-chart-bar', bg: '#E6F1FB', fg: '#0D4680' },
   global: { n: 'Global admin', d: 'Platform oversight', i: 'ti-shield-lock', bg: '#EEEDFE', fg: '#554CBB' }
 };
-const ROLE_ORDER = ['member', 'sponsor', 'worker', 'lead', 'counsel', 'cmd', 'mpf', 'global'];
+const ROLE_ORDER = ['member', 'sponsor', 'worker', 'lead', 'counsel', 'css', 'cmd', 'mpf', 'global'];
 const FLAG_OPTS = [
   ['fam', 'Travelling with family', 'Adds family medical and education clearance'],
   ['efmp', 'EFMP enrolled', 'Adds EFMP family needs assessment'],
@@ -38,21 +39,22 @@ const FLAG_OPTS = [
 ];
 const TAG_LABEL = { fam: 'family', efmp: 'EFMP', pov: 'vehicle', pet: 'pets', dorm: 'dorm resident', sipr: 'SIPR token', cust: 'custodian', moto: 'motorcycle', air: 'aircrew' };
 const MOVE_TYPES = ['OCONUS to OCONUS', 'OCONUS to CONUS', 'CONUS to OCONUS', 'CONUS to CONUS'];
-const SCREENS = { member: 's-member', sponsor: 's-sponsor', worker: 's-worker', lead: 's-lead', counsel: 's-counsel', mpf: 's-mpf', cmd: 's-cmd', global: 's-global' };
+const SCREENS = { member: 's-member', sponsor: 's-sponsor', worker: 's-worker', lead: 's-lead', counsel: 's-counsel', css: 's-css', mpf: 's-mpf', cmd: 's-cmd', global: 's-global' };
 const TABS = {
   member: ['m', ['tasks', 'inbox', 'docs', 'tips', 'me'], 'on'],
   sponsor: ['s', ['mem', 'prep', 'msg'], 'son'],
   worker: ['w', ['queue', 'req', 'hist', 'tips'], 'bon'],
   lead: ['l', ['sched', 'req', 'queue', 'office', 'tips'], 'lon'],
   counsel: ['c', ['mem', 'so', 'appt', 'tips'], 'con'],
+  css: ['x', ['need', 'all', 'people'], 'son'],
   mpf: ['b', ['prof', 'tasks', 'appt', 'inb', 'users'], 'bon'],
   cmd: ['d', ['out', 'in', 'tips'], 'con'],
-  global: ['g', ['health', 'bases', 'req', 'tips'], 'gon']
+  global: ['g', ['health', 'bases', 'req', 'support', 'tips'], 'gon']
 };
 const NOTE_STYLE = {
   reminder: ['ti-bell', '#E6F1FB', '#0D4680'], overdue: ['ti-alert-triangle', '#FCEBEB', '#A32D2D'],
   message: ['ti-message', '#FBEEE0', '#8A4B10'], handoff: ['ti-plane', '#EEEDFE', '#554CBB'],
-  signoff: ['ti-circle-check', '#E9F3DD', '#356210'], system: ['ti-info-circle', '#E6F1FB', '#0D4680']
+  signoff: ['ti-circle-check', '#E9F3DD', '#356210'], appt: ['ti-calendar-event', '#E1F5EE', '#0A5344'], system: ['ti-info-circle', '#E6F1FB', '#0D4680']
 };
 const AV_COLORS = [['#B5D4F4', '#0D4680'], ['#C0DD97', '#356210'], ['#CECBF6', '#3C3489'], ['#F5C4B3', '#712B13'], ['#9FE1CB', '#0A5344'], ['#FAEEDA', '#7A4809']];
 const RISK = { high: ['pr', 'High risk'], medium: ['pa', 'Attention'], low: ['pn', 'On track'] };
@@ -80,8 +82,10 @@ function toast(msg, kind) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.className = 'toast'; }, kind === 'err' ? 5200 : 3400);
 }
+const NO_FAB = { 's-boot': 1, 's-help': 1, 's-reset': 1, 's-signup': 1 };
 function show(id) {
   document.querySelectorAll('.scr').forEach(s => s.classList.toggle('on', s.id === id));
+  const f = el('fab'); if (f) f.classList.toggle('on', !NO_FAB[id] && id !== 's-login');
   window.scrollTo(0, 0);
 }
 function busy(btnId, on, label) {
@@ -144,7 +148,7 @@ const unlockedIn = p => p.dir === 'in' || p.handoff === 'complete';
 
 function tasksFor(p, dir) {
   const base = dir === 'out' ? p.base_id : inBase(p);
-  if (!base || (dir === 'out' && p.dir === 'in')) return [];
+  if (!base || p.dir === 'none' || (dir === 'out' && p.dir === 'in')) return [];
   const f = p.flags || {};
   return S.tasks.filter(t => t.base_id === base && t.dir === dir && (!t.tag || f[t.tag]))
     .sort((a, b) => (dir === 'out' ? b.offset_days - a.offset_days : a.offset_days - b.offset_days) || (a.sort - b.sort));
@@ -241,11 +245,7 @@ async function boot() {
     return;
   }
   if ('serviceWorker' in navigator && location.protocol.indexOf('http') === 0) navigator.serviceWorker.register('sw.js').catch(() => {});
-  DB.onRecovery = async () => {
-    const p = window.prompt('Choose a new password (at least 8 characters)');
-    if (!p || p.length < 8) { toast('Password not changed. It needs at least 8 characters.', 'err'); return; }
-    try { await DB.updatePassword(p); toast('Password updated.'); } catch (e) { toast(e.message, 'err'); }
-  };
+  DB.onRecovery = () => showReset();
   window.addEventListener('online', async () => {
     setOnline(true);
     const n = await DB.flush();
@@ -263,6 +263,7 @@ async function boot() {
   try {
     if (navigator.onLine !== false) await DB.flush();
     const uid = await DB.session();
+    if (uid && DB.recovering) { showReset(); return; }
     if (uid) { await enterAs(uid); return; }
   } catch (e) { console.error(e); toast(e.message || 'Could not load your data.', 'err'); }
   show('s-login');
@@ -301,14 +302,18 @@ async function doLogin() {
   if (!pass) { toast('Enter your password.', 'err'); return; }
   busy('lg-go', true, 'Signing in');
   try { const uid = await DB.signIn(email, pass); el('lg-pass').value = ''; await enterAs(uid); }
-  catch (e) { toast(e.message || 'Sign in failed.', 'err'); }
+  catch (e) {
+    toast(e.message || 'Sign in failed.', 'err');
+    el('lg-extra').innerHTML = /confirm your email/i.test(e.message || '') ? '<button type="button" class="ibtn" style="width:100%" onclick="resendConfirm()"><i class="ti ti-mail-forward" aria-hidden="true"></i> Resend confirmation email</button>'
+      : /wrong/i.test(e.message || '') ? '<div class="ts" style="text-align:center;margin:0">Forgot it? Tap <b>Forgot password?</b> above and we will email you a link.</div>' : '';
+  }
   finally { busy('lg-go', false); }
 }
 async function forgot() {
   const email = val('lg-email').trim();
   if (DB.mode === 'demo') { toast('Demo accounts all use the password "demo".'); return; }
-  if (!email) { toast('Enter your email first, then tap Forgot password.', 'err'); return; }
-  try { await DB.resetPassword(email); toast('Check your email for a link to reset your password.'); } catch (e) { toast(e.message, 'err'); }
+  if (!email) { toast('Type your email in the box first, then tap Forgot password.', 'err'); el('lg-email').focus(); return; }
+  try { await DB.resetPassword(email); toast('If that email has an account, a reset link is on its way. Check spam too.'); el('lg-extra').innerHTML = '<div class="ts" style="text-align:center;margin:0">No email after 10 minutes? <button type="button" class="lbtn" onclick="openHelp(\'account\')">Ask for help</button></div>'; } catch (e) { toast(e.message, 'err'); }
 }
 async function signOut() {
   try { await DB.signOut(); } catch (e) { console.warn(e); }
@@ -335,8 +340,20 @@ async function startSignup() {
   try { bases = await DB.listBases(); } catch (e) { toast('Could not load the list of bases. Check your connection.', 'err'); return; }
   el('su-base').innerHTML = baseOptions(bases.filter(b => b.live), null, 'Choose your base');
   el('su-gain').innerHTML = baseOptions(bases, null, 'Not yet assigned');
-  el('su-flags').innerHTML = FLAG_OPTS.map(f => `<div class="rule"><div style="flex:1"><div class="rt">${esc(f[1])}</div><div class="ts">${esc(f[2])}</div></div>${toggle('id="su-f-' + f[0] + '"', false, f[1])}</div>`).join('');
+  el('su-flags').innerHTML = flagToggles('su', {});
   ui.suStep = 1; suShow(); suDirChanged(); show('s-signup');
+}
+// The "what applies to you" list, with a "None of these" switch that clears the rest.
+function flagToggles(pre, flags) {
+  const none = !FLAG_OPTS.some(f => flags[f[0]]);
+  return FLAG_OPTS.map(f => `<div class="rule"><div style="flex:1"><div class="rt">${esc(f[1])}</div><div class="ts">${esc(f[2])}</div></div>${toggle(`id="${pre}-f-${f[0]}" onchange="flagChanged('${pre}',this)"`, flags[f[0]], f[1])}</div>`).join('') +
+    `<div class="rule"><div style="flex:1"><div class="rt">None of these apply to me</div><div class="ts">Just the standard checklist</div></div>${toggle(`id="${pre}-f-none" onchange="flagChanged('${pre}',this)"`, none && pre !== 'su', 'None of these apply to me')}</div>`;
+}
+function flagChanged(pre, cb) {
+  const isNone = cb.id === pre + '-f-none';
+  if (isNone && cb.checked) FLAG_OPTS.forEach(f => { const e = el(pre + '-f-' + f[0]); if (e) e.checked = false; });
+  if (!isNone && cb.checked) { const n = el(pre + '-f-none'); if (n) n.checked = false; }
+  if (pre === 'mp') { const flags = {}; FLAG_OPTS.forEach(f => { flags[f[0]] = checked('mp-f-' + f[0]); }); saveFlags(flags); }
 }
 function suShow() {
   [1, 2, 3].forEach(i => { el('su-' + i).classList.toggle('on', i === ui.suStep); el('sb' + i).classList.toggle('on', i <= ui.suStep); });
@@ -345,6 +362,8 @@ function suShow() {
 }
 function suDirChanged() {
   const d = val('su-dir');
+  el('su-movewrap').style.display = d === 'none' ? 'none' : '';
+  el('su-nonemsg').style.display = d === 'none' ? '' : 'none';
   el('su-gainwrap').style.display = d === 'in' ? 'none' : '';
   el('su-depwrap').style.display = d === 'in' ? 'none' : '';
 }
@@ -360,6 +379,7 @@ function suValidate(step) {
   return null;
 }
 function moveError(dir, dep, rnltd) {
+  if (dir === 'none') return null;
   if (dir !== 'in' && !dep) return 'Add your projected departure date.';
   if (dir === 'in' && !rnltd) return 'Add your RNLTD, the date you report to this base.';
   if (dep && rnltd && rnltd < dep) return 'Your RNLTD is before your departure date. Check both dates.';
@@ -367,17 +387,19 @@ function moveError(dir, dep, rnltd) {
 }
 function suNext(n) {
   if (n > ui.suStep) { for (let s = ui.suStep; s < n; s++) { const err = suValidate(s); if (err) { toast(err, 'err'); return; } } }
+  // People who are not moving skip the "what applies to you" step.
+  if (n === 3 && val('su-dir') === 'none') { submitProfile(); return; }
   ui.suStep = n; suShow();
 }
 async function submitProfile() {
   const err = suValidate(1) || suValidate(2);
   if (err) { toast(err, 'err'); return; }
   const flags = {}; FLAG_OPTS.forEach(f => { flags[f[0]] = checked('su-f-' + f[0]); });
-  const dir = val('su-dir');
+  const dir = val('su-dir'), moving = dir !== 'none';
   const meta = {
     name: val('su-name').trim(), unit: val('su-unit').trim(), base_id: val('su-base'), dir,
-    gaining_base: dir === 'in' ? '' : val('su-gain'), depart: dir === 'in' ? '' : val('su-dep'),
-    rnltd: val('su-rnltd'), move_type: val('su-type'), flags
+    gaining_base: dir === 'in' || !moving ? '' : val('su-gain'), depart: dir === 'in' || !moving ? '' : val('su-dep'),
+    rnltd: moving ? val('su-rnltd') : '', move_type: moving ? val('su-type') : '', flags: moving ? flags : {}
   };
   const email = val('su-email').trim().toLowerCase();
   busy('su-go', true, 'Submitting');
@@ -403,10 +425,10 @@ function showPending() {
   let h = '';
   if (returned) {
     h += `<div class="card" style="border-color:#F2C4C4"><div class="row"><i class="ti ti-arrow-back-up" style="font-size:22px;color:#A32D2D" aria-hidden="true"></i><div style="flex:1"><div class="tn">Your MPF asked for changes</div><div class="ts" style="line-height:1.6">${esc(p.return_note || 'Check your details below and resubmit.')}</div></div></div></div>`;
-    h += `<div class="card"><div class="dlbl">Your move</div>${moveEditor('pe', p)}<div class="dlbl" style="margin-top:4px">What applies to you</div>${FLAG_OPTS.map(f => `<div class="rule"><div style="flex:1"><div class="rt">${esc(f[1])}</div></div>${toggle('id="pe-f-' + f[0] + '"', p.flags[f[0]], f[1])}</div>`).join('')}</div>`;
+    h += `<div class="card"><div class="dlbl">Your move</div>${moveEditor('pe', p)}<div class="dlbl" style="margin-top:4px">What applies to you</div>${flagToggles('pe', p.flags)}</div>`;
     h += `<button class="pbtn bblue" id="pe-go" onclick="resubmit()">Resubmit for review</button>`;
   } else {
-    h += `<div class="card" style="text-align:center;padding:26px 16px"><i class="ti ti-clock-hour-4" style="font-size:34px;color:#7A4809" aria-hidden="true"></i><div class="tn" style="margin-top:11px">MPF is reviewing your profile</div><div class="ts" style="line-height:1.6">They confirm your unit, dates and orders before your checklist unlocks. Most profiles clear within one duty day. You get a notification the moment it does.</div></div>`;
+    h += `<div class="card" style="text-align:center;padding:26px 16px"><i class="ti ti-clock-hour-4" style="font-size:34px;color:#7A4809" aria-hidden="true"></i><div class="tn" style="margin-top:11px">MPF is reviewing your profile</div><div class="ts" style="line-height:1.6">${p.dir === 'none' ? 'They confirm your details and give you your job in the app, such as office worker, sponsor or squadron CSS.' : 'They confirm your unit, dates and orders before your checklist unlocks.'} Most profiles clear within one duty day. You get a notification the moment it does.</div></div>`;
     h += `<div class="card"><div class="dlbl">What you submitted</div>${profileSummary(p)}</div>`;
     h += `<div class="card soft"><div class="tn">While you wait</div><div class="ts" style="line-height:1.6">If your orders are already final, email them to your CSS now. That is the single thing most likely to hold up your review.</div></div>`;
     h += `<button class="pbtn bblue" onclick="checkAgain()">Check again</button>`;
@@ -416,6 +438,7 @@ function showPending() {
 }
 function profileSummary(p) {
   const opts = FLAG_OPTS.filter(f => p.flags[f[0]]).map(f => TAG_LABEL[f[0]]);
+  if (p.dir === 'none') return dmr('ti-user', p.name + (p.unit ? ', ' + p.unit : '')) + dmr('ti-building', 'Not moving. Staff or sponsor at ' + baseName(p.base_id));
   const dirTxt = p.dir === 'in' ? 'In-processing at ' + baseName(p.base_id) : (p.dir === 'both' ? 'Mid-move, ' : 'Out-processing, ') + baseName(p.base_id) + ' to ' + baseName(p.gaining_base);
   return dmr('ti-user', p.name + (p.unit ? ', ' + p.unit : '')) + dmr('ti-plane-departure', dirTxt) +
     (p.dir !== 'in' ? dmr('ti-calendar', 'Departs ' + fmt(p.depart)) : '') + dmr('ti-calendar-event', 'RNLTD ' + fmt(p.rnltd)) +
@@ -432,7 +455,7 @@ async function resubmit() {
 // Shared editor for departure details
 function moveEditor(pre, p) {
   const bases = S.bases.slice().sort(sortByName);
-  return `<label class="fl" for="${pre}-dir">What are you doing</label><select class="fs" id="${pre}-dir">${opt('out', 'Out-processing', p.dir === 'out')}${opt('in', 'In-processing', p.dir === 'in')}${opt('both', 'Both, mid-move', p.dir === 'both')}</select>
+  return `<label class="fl" for="${pre}-dir">What are you doing</label><select class="fs" id="${pre}-dir">${opt('out', 'Out-processing', p.dir === 'out')}${opt('in', 'In-processing', p.dir === 'in')}${opt('both', 'Both, mid-move', p.dir === 'both')}${opt('none', 'None, not moving', p.dir === 'none')}</select>
 <label class="fl" for="${pre}-gain">Gaining base</label><select class="fs" id="${pre}-gain">${baseOptions(bases, p.gaining_base, 'Not yet assigned')}</select>
 <div class="g2"><div><label class="fl" for="${pre}-dep">Departure date</label><input class="fi" type="date" id="${pre}-dep" value="${esc(p.depart || '')}"></div><div><label class="fl" for="${pre}-rnltd">RNLTD</label><input class="fi" type="date" id="${pre}-rnltd" value="${esc(p.rnltd || '')}"></div></div>
 <label class="fl" for="${pre}-type">Move type</label><select class="fs" id="${pre}-type">${MOVE_TYPES.map(t => opt(t, t, p.move_type === t)).join('')}</select>`;
@@ -478,7 +501,7 @@ function tab(t) {
   });
 }
 function drawRole() {
-  ({ member: drawMember, sponsor: drawSponsor, worker: drawWorker, lead: drawLead, counsel: drawCounsel, mpf: drawMpf, cmd: drawCmd, global: drawGlobal })[role]();
+  ({ member: drawMember, sponsor: drawSponsor, worker: drawWorker, lead: drawLead, counsel: drawCounsel, css: drawCss, mpf: drawMpf, cmd: drawCmd, global: drawGlobal })[role]();
 }
 function renderCurrent() {
   if (!me) return;
@@ -498,7 +521,13 @@ function drawMember() {
 function drawMemberHeader() {
   const p = me;
   if (p.dir === 'in') ui.dir = 'in';
-  el('mdirtog').style.display = p.dir === 'in' ? 'none' : 'flex';
+  el('mdirtog').style.display = p.dir === 'in' || p.dir === 'none' ? 'none' : 'flex';
+  if (p.dir === 'none') {
+    el('mhdr').style.background = '#1A5FA8'; el('m-name').textContent = p.name;
+    el('mhsub').textContent = 'Not moving · ' + baseName(p.base_id);
+    el('mpgf').style.width = '0%'; el('mpgl').textContent = 'No PCS checklist';
+    return;
+  }
   ['out', 'in'].forEach(d => { const b = el('mo-' + d); b.classList.toggle('on', ui.dir === d); b.setAttribute('aria-pressed', ui.dir === d ? 'true' : 'false'); });
   el('mhdr').style.background = ui.dir === 'out' ? '#1A5FA8' : '#554CBB';
   el('m-name').textContent = p.name;
@@ -510,6 +539,7 @@ function drawMemberHeader() {
 }
 function drawJourney() {
   const p = me, e = el('jrny');
+  if (p.dir === 'none') { e.innerHTML = `<div class="jleg"><div class="jbase">${esc(baseName(p.base_id))}</div><div class="jsub">Not moving</div></div><span class="jstat pgy">No PCS</span>`; return; }
   if (p.dir === 'in') {
     e.innerHTML = `<div class="jleg"><div class="jbase">${esc(baseName(p.base_id))}</div><div class="jsub">RNLTD ${esc(fmt(p.rnltd))}</div></div><span class="jstat pp">In-processing</span>`;
     return;
@@ -526,6 +556,7 @@ function setFilt(f) {
 function drawTaskList() {
   const p = me, dir = ui.dir, box = el('mlist');
   let h = '';
+  if (p.dir === 'none') { box.innerHTML = emp('ti-home-check', 'You are not moving, so there is no PCS checklist. If you get orders, open Profile and change "What are you doing".'); return; }
   if (dir === 'in' && !inBase(p)) { box.innerHTML = emp('ti-map-pin', 'Add your gaining base in Profile to see your in-processing checklist.'); return; }
   if (dir === 'out' && !p.depart) h += `<div class="card soft"><div class="ts">Add your departure date in Profile so we can work out your due dates.</div></div>`;
   const locked = dir === 'in' && !unlockedIn(p);
@@ -553,13 +584,14 @@ function taskCard(p, t, locked) {
   if (s === 'submitted') rows += dmr('ti-hourglass', 'You marked your part done. ' + (off ? off.name : 'Your counselor') + ' confirms and signs it off.');
   const bk = myBooking(p.id, t.id);
   const pendingReq = !bk && S.appt_requests.find(a => a.member_id === p.id && a.task_id === t.id && a.status === 'pending');
-  if (bk) rows += dmr('ti-calendar-check', 'Appointment: ' + slotLabel(bk.slot) + ' at ' + (t.loc || (off && off.building) || 'the office'));
+  if (bk && bk.appt.status === 'confirmed') rows += dmr('ti-calendar-check', 'Appointment confirmed: ' + slotLabel(bk.slot) + ' at ' + (t.loc || (off && off.building) || 'the office'));
+  if (bk && bk.appt.status === 'pending') rows += dmr('ti-hourglass', 'You asked for ' + slotLabel(bk.slot) + '. Waiting for ' + (off ? off.name : 'the office') + ' to confirm. You get a notification either way.');
   if (pendingReq) rows += dmr('ti-calendar-event', 'Appointment requested. The office will offer you a time.');
   let btns = '', picker = '';
   if (!fin && !locked) {
     if (s === 'submitted') btns += `<button class="ibtn" onclick="undoMine('${t.id}')">Undo, I am not done</button>`;
     else btns += `<button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" onclick="markMine('${t.id}')">I have done my part</button>`;
-    if (off && bk) btns += `<button class="ibtn" onclick="cancelBooking('${bk.appt.id}')">Cancel appointment</button>`;
+    if (off && bk) btns += `<button class="ibtn" onclick="cancelBooking('${bk.appt.id}')">${bk.appt.status === 'pending' ? 'Cancel request' : 'Cancel appointment'}</button>`;
     else if (off && ui.book !== t.id) btns += `<button class="ibtn" onclick="openBook('${t.id}')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Book a time</button>`;
     if (off && ui.book === t.id && !bk) picker = bookPicker(t, off);
   }
@@ -690,8 +722,9 @@ function openDays(off, max) {
   for (let i = 0; i < 42 && out.length < max; i++) { const d = addDays(today(), i), times = freeTimes(off, d); if (times.length) out.push({ day: d, times }); }
   return out;
 }
+// A member's chosen time for a task: requested (pending) or confirmed by the office.
 function myBooking(memberId, taskId) {
-  const appt = S.appt_requests.find(a => a.member_id === memberId && a.task_id === taskId && a.status === 'confirmed' && a.slot_id);
+  const appt = S.appt_requests.find(a => a.member_id === memberId && a.task_id === taskId && (a.status === 'confirmed' || a.status === 'pending') && a.slot_id);
   const slot = appt && S.slots.find(x => x.id === appt.slot_id);
   return slot && slot.slot_day >= today() ? { appt, slot } : null;
 }
@@ -700,7 +733,7 @@ function bookPicker(t, off) {
   const days = openDays(off, 15);
   if (!days.length) return `<div class="af" style="margin-bottom:12px"><div class="ts" style="margin:0">${esc(off.name)} has no free times in the next six weeks. Call DSN ${esc(off.phone || t.phone || '')}.</div><div class="brow" style="margin-top:10px"><button class="ibtn" onclick="ui.book=null;drawTaskList()">Close</button></div></div>`;
   const day = days.find(d => d.day === ui.bookDay) ? ui.bookDay : days[0].day, times = days.find(d => d.day === day).times;
-  return `<div class="af" style="margin-bottom:12px"><h4>Book ${esc(off.name)}</h4><div class="g2"><div><label class="fl" for="bk-day">Day</label><select class="fs" id="bk-day" onchange="ui.bookDay=this.value;drawTaskList()">${days.map(d => opt(d.day, DOW_SHORT[parseISO(d.day).getDay()] + ' ' + fmtShort(d.day) + (d.day === today() ? ' (today)' : ''), d.day === day)).join('')}</select></div><div><label class="fl" for="bk-time">Time</label><select class="fs" id="bk-time">${times.map(tm => opt(tm, hhmm(tm))).join('')}</select></div></div><div class="brow"><button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" id="bk-go" onclick="bookTime('${t.id}')">Book it</button><button class="ibtn" onclick="ui.book=null;drawTaskList()">Cancel</button></div><div class="fhint" style="margin:8px 0 0">${esc(schedLabel(off))}. Your appointment is confirmed straight away.</div></div>`;
+  return `<div class="af" style="margin-bottom:12px"><h4>Book ${esc(off.name)}</h4><div class="g2"><div><label class="fl" for="bk-day">Day</label><select class="fs" id="bk-day" onchange="ui.bookDay=this.value;drawTaskList()">${days.map(d => opt(d.day, DOW_SHORT[parseISO(d.day).getDay()] + ' ' + fmtShort(d.day) + (d.day === today() ? ' (today)' : ''), d.day === day)).join('')}</select></div><div><label class="fl" for="bk-time">Time</label><select class="fs" id="bk-time">${times.map(tm => opt(tm, hhmm(tm))).join('')}</select></div></div><div class="brow"><button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" id="bk-go" onclick="bookTime('${t.id}')">Request this time</button><button class="ibtn" onclick="ui.book=null;drawTaskList()">Cancel</button></div><div class="fhint" style="margin:8px 0 0">${esc(schedLabel(off))}. The time is held for you while ${esc(off.name)} confirms it, and you get a notification either way.</div></div>`;
 }
 function bookErr(e) {
   const m = String(e && e.message || e);
@@ -713,21 +746,28 @@ async function bookTime(taskId) {
   if (!day || !time) return;
   if (!freeTimes(off, day).includes(time)) { toast('Someone just took that time. Pick another one.', 'err'); drawTaskList(); return; }
   if (navigator.onLine === false) { toast('Connect to the internet to book an appointment.', 'err'); return; }
-  busy('bk-go', true, 'Booking');
+  busy('bk-go', true, 'Sending');
   const slot = { id: DB.newId(), office_id: off.id, slot_day: day, slot_time: time, member_id: me.id, blocked: false };
   try { await DB.insert('slots', [slot]); } catch (e) { toast(bookErr(e), 'err'); await reload(); drawMember(); return; }
   S.slots.push(slot);
-  for (const a of S.appt_requests.filter(x => x.member_id === me.id && x.task_id === taskId && x.status === 'pending')) await del('appt_requests', { id: a.id });
-  await ins('appt_requests', { member_id: me.id, task_id: taskId, office_id: off.id, note: '', status: 'confirmed', slot_id: slot.id });
+  for (const a of S.appt_requests.filter(x => x.member_id === me.id && x.task_id === taskId && x.status === 'pending' && !x.slot_id)) await del('appt_requests', { id: a.id });
+  const rows = await ins('appt_requests', { member_id: me.id, task_id: taskId, office_id: off.id, note: '', status: 'pending', slot_id: slot.id });
+  // In live mode the database tells the office (supabase/update-4.sql). The demo does it here.
+  if (rows && DB.mode === 'demo') await notifyMany(officeStaff(off).map(uid => ({ user_id: uid, kind: 'appt', title: 'Appointment request: ' + me.name, body: t.name + ', ' + slotLabel(slot) + '. Confirm or reject it under Appts.' })));
   ui.book = null;
-  toast('Booked: ' + off.name + ', ' + slotLabel(slot) + '.');
+  toast('Requested ' + slotLabel(slot) + '. ' + off.name + ' will confirm it.');
   drawMember();
+}
+// Who hears about a new request: the office's workers and leads, or the base MPF if nobody is linked yet.
+function officeStaff(off) {
+  const staff = S.profiles.filter(p => p.office_id === off.id && p.status === 'active' && (p.roles.includes('worker') || p.roles.includes('lead'))).map(p => p.id);
+  return staff.length ? staff : S.profiles.filter(p => p.base_id === off.base_id && p.status === 'active' && p.roles.includes('mpf')).map(p => p.id);
 }
 async function cancelBooking(apptId) {
   const a = S.appt_requests.find(x => x.id === apptId), slot = a && S.slots.find(x => x.id === a.slot_id);
-  if (!a || !window.confirm('Cancel this appointment' + (slot ? ' on ' + slotLabel(slot) : '') + '?')) return;
+  if (!a || !window.confirm((a.status === 'pending' ? 'Cancel this request' : 'Cancel this appointment') + (slot ? ' for ' + slotLabel(slot) : '') + '?')) return;
   if (slot && !(await del('slots', { id: slot.id }))) return;
-  if (await del('appt_requests', { id: apptId })) { toast('Appointment cancelled. The time is free for someone else.'); drawMember(); }
+  if (await del('appt_requests', { id: apptId })) { toast('Cancelled. The time is free for someone else.'); drawMember(); }
 }
 
 // Inbox
@@ -860,8 +900,7 @@ function drawProfileTab() {
   const p = me;
   let h = `<div class="card"><div class="row">${avatar(p)}<div style="flex:1"><div class="tn">${esc(p.name)}</div><div class="ts">${esc((p.unit ? p.unit + ' · ' : '') + baseName(p.base_id))}</div></div>${pill('pn', 'Approved')}</div></div>`;
   h += `<div class="card"><div class="dlbl">Your move</div><div class="ts" style="margin:0 0 10px">Change these if your orders change. Due dates update straight away.</div>${moveEditor('mp', p)}<button class="pbtn bblue" onclick="saveMove()">Save move details</button></div>`;
-  h += `<div class="card"><div class="dlbl">What applies to you</div><div class="ts" style="margin-bottom:8px">These control which tasks show on your checklist.</div>` +
-    FLAG_OPTS.map(f => `<div class="rule"><div style="flex:1"><div class="rt">${esc(f[1])}</div><div class="ts">${esc(f[2])}</div></div>${toggle(`onchange="flipFlag('${f[0]}',this.checked)"`, p.flags[f[0]], f[1])}</div>`).join('') + '</div>';
+  if (p.dir !== 'none') h += `<div class="card"><div class="dlbl">What applies to you</div><div class="ts" style="margin-bottom:8px">These control which tasks show on your checklist.</div>${flagToggles('mp', p.flags)}</div>`;
   h += roleRequestCard();
   h += shareButton('Know someone else PCSing? Share PCS Path');
   h += `<button class="ibtn" style="width:100%" onclick="switchRole()">${me.roles.length > 1 ? 'Switch role' : 'Sign out'}</button>`;
@@ -870,10 +909,10 @@ function drawProfileTab() {
 async function saveMove() {
   const m = readMove('mp'), err = moveError(m.dir, m.depart, m.rnltd);
   if (err) { toast(err, 'err'); return; }
-  if (await upd('profiles', { id: me.id }, m)) { if (m.dir === 'in') ui.dir = 'in'; toast('Saved. Your due dates are updated.'); drawMember(); }
+  if (m.dir === 'none') Object.assign(m, { gaining_base: null, depart: null, rnltd: null });
+  if (await upd('profiles', { id: me.id }, m)) { if (m.dir === 'in') ui.dir = 'in'; if (m.dir === 'out' || m.dir === 'both') ui.dir = 'out'; toast(m.dir === 'none' ? 'Saved. You are marked as not moving.' : 'Saved. Your due dates are updated.'); drawMember(); }
 }
-async function flipFlag(k, v) {
-  const flags = Object.assign({}, me.flags, { [k]: v });
+async function saveFlags(flags) {
   if (await upd('profiles', { id: me.id }, { flags })) { toast('Checklist updated.'); drawMember(); tab('me'); }
 }
 function roleRequestCard() {
@@ -1014,33 +1053,54 @@ function drawAppts(cid, badgeId) {
   const offs = apptOffices(), box = el(cid), own = role === 'worker' || role === 'lead';
   if (!offs.length) { setBadge(badgeId, 0); box.innerHTML = own ? noOffice() : emp('ti-building', 'No offices at this base yet. The starter checklist adds them.'); return; }
   const ids = new Set(offs.map(o => o.id));
-  const reqs = S.appt_requests.filter(a => ids.has(a.office_id) && a.status === 'pending').sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
-  const booked = S.appt_requests.map(a => ({ a, s: a.status === 'confirmed' && S.slots.find(x => x.id === a.slot_id) }))
-    .filter(x => x.s && ids.has(x.a.office_id) && x.s.slot_day >= today()).sort((x, y) => (x.s.slot_day + x.s.slot_time).localeCompare(y.s.slot_day + y.s.slot_time));
-  setBadge(badgeId, reqs.length + booked.filter(x => x.s.slot_day === today()).length);
-  let h = `<div class="ts" style="margin:0 0 2px;line-height:1.5">${own ? 'Members book themselves into open times. ' + esc(schedLabel(offs[0])) + '.' : 'Bookings for every office at ' + esc(baseName(me.base_id)) + '. Members book themselves into open times, so there is nothing to approve.'}</div>`;
-  if (reqs.length) {
-    h += '<div class="dlbl" style="margin-top:6px">Waiting for a time</div>' + reqs.map(a => {
-      const m = P(a.member_id) || { name: 'Member' }, t = TK(a.task_id), off = O(a.office_id) || { name: 'Office' }, days = O(a.office_id) ? openDays(off, 10) : [];
-      const choices = days.flatMap(d => d.times.slice(0, 16).map(tm => [d.day + '|' + tm, DOW_SHORT[parseISO(d.day).getDay()] + ' ' + fmtShort(d.day) + ', ' + hhmm(tm)]));
-      const act = canManageOffice(a.office_id) ? `${choices.length ? `<label class="fl" for="as-${a.id}" style="margin-top:10px">Book them in at</label><select class="fs" id="as-${a.id}">${choices.map(c => opt(c[0], c[1])).join('')}</select>` : ''}<div class="brow"><button class="sbtn" style="flex:1" onclick="answerAppt('${a.id}',true)">Book it</button><button class="ibtn dg" onclick="answerAppt('${a.id}',false)">Decline</button></div>` : '';
-      return `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">${esc(t ? t.name : '')} · asked ${esc(when(a.created_at))}</div></div>${own ? '' : pill('pl', off.name)}</div>${act}</div>`;
+  const all = S.appt_requests.filter(a => ids.has(a.office_id));
+  const slotOf = a => a.slot_id && S.slots.find(x => x.id === a.slot_id);
+  const asks = all.filter(a => a.status === 'pending' && slotOf(a)).sort((a, b) => (slotOf(a).slot_day + slotOf(a).slot_time).localeCompare(slotOf(b).slot_day + slotOf(b).slot_time));
+  const reqs = all.filter(a => a.status === 'pending' && !slotOf(a)).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const booked = all.map(a => ({ a, s: a.status === 'confirmed' && slotOf(a) }))
+    .filter(x => x.s && x.s.slot_day >= today()).sort((x, y) => (x.s.slot_day + x.s.slot_time).localeCompare(y.s.slot_day + y.s.slot_time));
+  setBadge(badgeId, asks.length + reqs.length);
+  let h = `<div class="ts" style="margin:0 0 2px;line-height:1.5">${own ? 'Members pick a time from your hours (' + esc(schedLabel(offs[0])) + '). Confirm or reject each request and they get a notification.' : 'Appointments for every office at ' + esc(baseName(me.base_id)) + '. Each office confirms its own requests. You can step in for an office with nobody linked to it.'}</div>`;
+  const who = (a, extra) => { const m = P(a.member_id) || { name: 'Member' }, t = TK(a.task_id), off = O(a.office_id) || { name: 'Office' }; return `<div class="row">${avatar(m)}<div style="flex:1;min-width:0"><div class="tn">${esc(m.name)}</div><div class="ts">${esc(t ? t.name : '')}${extra || ''}</div></div>${own ? '' : pill('pl', off.name)}</div>${uploadsChips(a.member_id, a.task_id)}`; };
+  if (asks.length) {
+    h += '<div class="dlbl" style="margin-top:6px">Waiting for you to confirm</div>' + asks.map(a => {
+      const s = slotOf(a), off = O(a.office_id) || {}, unstaffed = !own && O(a.office_id) && !staffedOffice(O(a.office_id));
+      return `<div class="card">${who(a, '')}<div class="dmeta" style="margin:10px 0"><div class="dmr"><i class="ti ti-calendar-event" aria-hidden="true"></i><span><b>${esc(slotLabel(s))}</b>${s.slot_day === today() ? ' (today)' : ''}</span></div></div>${unstaffed ? `<div class="ts" style="margin:-4px 0 8px;color:#7A4809">Nobody is linked to ${esc(off.name)} yet, so this one is yours.</div>` : ''}${canManageOffice(a.office_id) ? `<div class="brow"><button class="sbtn" style="flex:1" onclick="answerAppt('${a.id}',true)">Confirm</button><button class="ibtn dg" onclick="answerAppt('${a.id}',false)">Reject</button></div>` : `<div class="ts">${esc(off.name || 'The office')} confirms this.</div>`}</div>`;
     }).join('');
   }
-  h += '<div class="dlbl" style="margin-top:6px">Upcoming appointments</div>';
+  if (reqs.length) {
+    h += '<div class="dlbl" style="margin-top:6px">Asked for an appointment, no time chosen</div>' + reqs.map(a => {
+      const off = O(a.office_id), days = off ? openDays(off, 10) : [];
+      const choices = days.flatMap(d => d.times.slice(0, 16).map(tm => [d.day + '|' + tm, DOW_SHORT[parseISO(d.day).getDay()] + ' ' + fmtShort(d.day) + ', ' + hhmm(tm)]));
+      const act = canManageOffice(a.office_id) ? `${choices.length ? `<label class="fl" for="as-${a.id}" style="margin-top:10px">Book them in at</label><select class="fs" id="as-${a.id}">${choices.map(c => opt(c[0], c[1])).join('')}</select>` : ''}<div class="brow"><button class="sbtn" style="flex:1" onclick="answerAppt('${a.id}',true)">Book it</button><button class="ibtn dg" onclick="answerAppt('${a.id}',false)">Reject</button></div>` : '';
+      return `<div class="card">${who(a, ' · asked ' + esc(when(a.created_at)))}${act}</div>`;
+    }).join('');
+  }
+  if (!asks.length && !reqs.length) h += emp('ti-circle-check', 'No requests waiting.');
+  h += '<div class="dlbl" style="margin-top:6px">Confirmed appointments</div>';
   h += booked.length ? '<div class="card">' + booked.slice(0, 60).map((x, i) => {
     const m = P(x.a.member_id) || { name: 'Member' }, t = TK(x.a.task_id), off = O(x.a.office_id) || { name: '' };
     return `<div class="frow"${i === 0 ? ' style="border-top:none;padding-top:0"' : ''}>${avatar(m)}<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">${esc(m.name)}</div><div class="ts">${esc(slotLabel(x.s))}${x.s.slot_day === today() ? ' (today)' : ''} · ${esc(t ? t.name : '')}${own ? '' : ' · ' + esc(off.name)}</div>${uploadsChips(x.a.member_id, x.a.task_id)}</div>${canManageOffice(x.a.office_id) ? `<button class="ibtn dg" onclick="officeCancel('${x.a.id}')">Cancel</button>` : ''}</div>`;
-  }).join('') + '</div>' : emp('ti-calendar-check', 'Nothing booked yet.');
+  }).join('') + '</div>' : emp('ti-calendar', 'Nothing confirmed yet.');
   box.innerHTML = h;
 }
 async function answerAppt(id, yes) {
   const a = S.appt_requests.find(x => x.id === id), off = O(a.office_id) || { name: 'The office' }, t = TK(a.task_id);
+  const held = a.slot_id && S.slots.find(x => x.id === a.slot_id), what = t ? t.name : 'your task';
   if (!yes) {
-    if (await upd('appt_requests', { id }, { status: 'declined' })) {
-      await notify(a.member_id, 'system', off.name + ' could not book you in', 'Book another time from the task, or call DSN ' + (off.phone || 'the office') + '.');
-      toast('Declined. The member has been told.'); drawRole();
-    }
+    let reason = window.prompt('Reject this request. Add a short reason for the member (optional):', '');
+    if (reason === null) return;
+    reason = reason.trim();
+    if (!(await upd('appt_requests', { id }, { status: 'declined', note: reason || a.note || '' }))) return;
+    if (held) await del('slots', { id: held.id });
+    await notify(a.member_id, 'appt', off.name + ' could not take ' + (held ? slotLabel(held) : 'your request'), (reason ? reason.replace(/[.!?]*$/, '.') + ' ' : '') + 'Pick another time on "' + what + '", or call DSN ' + (off.phone || 'the office') + '.');
+    toast('Rejected. The member has been notified.'); drawRole();
+    return;
+  }
+  if (held) {
+    if (!(await upd('appt_requests', { id }, { status: 'confirmed' }))) return;
+    await notify(a.member_id, 'appt', 'Appointment confirmed: ' + off.name, slotLabel(held) + ' at ' + (t && t.loc || off.building || 'the office') + ', for "' + what + '".');
+    toast('Confirmed. The member has been notified.'); drawRole();
     return;
   }
   const pick = val('as-' + id);
@@ -1049,7 +1109,7 @@ async function answerAppt(id, yes) {
   try { await DB.insert('slots', [slot]); } catch (e) { toast(bookErr(e), 'err'); await reload(); drawRole(); return; }
   S.slots.push(slot);
   if (!(await upd('appt_requests', { id }, { status: 'confirmed', slot_id: slot.id }))) return;
-  await notify(a.member_id, 'system', 'Appointment booked: ' + off.name, slotLabel(slot) + ' at ' + (off.building || 'the office') + '.');
+  await notify(a.member_id, 'appt', 'Appointment confirmed: ' + off.name, slotLabel(slot) + ' at ' + (off.building || 'the office') + ', for "' + what + '".');
   toast('Booked. The member has been notified.'); drawRole();
 }
 async function officeCancel(apptId) {
@@ -1155,7 +1215,7 @@ async function saveOffice() {
 // ---------------------------------------------------------------------
 // Base counselor
 // ---------------------------------------------------------------------
-function caseload() { return members().filter(m => m.base_id === me.base_id && m.dir !== 'in' && m.id !== me.id).sort((a, b) => (riskRank[risk(a)] - riskRank[risk(b)]) || String(a.depart).localeCompare(String(b.depart))); }
+function caseload() { return members().filter(m => m.base_id === me.base_id && m.dir !== 'in' && m.dir !== 'none' && m.id !== me.id).sort((a, b) => (riskRank[risk(a)] - riskRank[risk(b)]) || String(a.depart).localeCompare(String(b.depart))); }
 function drawCounsel() {
   el('cn-name').textContent = 'Counselor · ' + me.name;
   el('cn-sub').textContent = baseName(me.base_id) + ' out-processing caseload';
@@ -1204,9 +1264,9 @@ function setupCard() {
   const items = [
     [S.tasks.some(t => t.base_id === base), 'Checklist and offices loaded', 'Tasks, ' + offs.length + ' offices, reminders and tips. Edit anything in Master list.', `<button class="ibtn" onclick="tab('tasks')">Master list</button>`],
     [!!(b && b.live), 'Base open for sign-ups', hasRole('global') ? 'Lets members pick ' + baseName(base) + ' when they sign up.' : 'A global admin switches this on.', hasRole('global') ? `<button class="sbtn" onclick="openMyBase()">Open it</button>` : ''],
-    [true, 'Appointments ready', 'Every office takes bookings ' + (offs[0] ? schedLabel(offs[0]) : 'Mon–Fri, 0800–1600') + '. Members book themselves.', `<button class="ibtn" onclick="tab('appt')">Appts</button>`],
+    [true, 'Appointments ready', 'Every office takes requests ' + (offs[0] ? schedLabel(offs[0]) : 'Mon–Fri, 0800–1600') + '. Members pick a time and the office confirms it.', `<button class="ibtn" onclick="tab('appt')">Appts</button>`],
     [offs.length > 0 && staffed === offs.length, 'Offices staffed (' + staffed + ' of ' + offs.length + ')', 'Optional. Until an office has a worker, you and the counselor handle its sign-offs and appointments.', `<button class="ibtn" onclick="tab('users')">Users</button>`],
-    [S.profiles.some(p => p.base_id === base && p.status === 'active' && p.roles.includes('sponsor')), 'At least one sponsor', 'Tick Sponsor on someone in Users, then pick them as a member’s sponsor.', `<button class="ibtn" onclick="tab('users')">Users</button>`],
+    [S.profiles.some(p => p.base_id === base && p.status === 'active' && p.roles.includes('css')), 'Squadron CSS named', 'Tick Squadron CSS on someone in Users. The CSS assigns sponsors.', `<button class="ibtn" onclick="tab('users')">Users</button>`],
     [others > 0, 'Members invited', 'Text the link or show the QR code at a briefing.', `<a class="ibtn" href="share.html" style="text-decoration:none">Share</a>`]
   ];
   const done = items.filter(i => i[0]).length;
@@ -1308,13 +1368,12 @@ function drawRules() {
 async function toggleRule(id, v) { const r = S.reminder_rules.find(x => x.id === id); if (await upd('reminder_rules', { id }, { enabled: v })) toast(r.title + (v ? ' is on.' : ' is off.')); }
 function drawInbound() {
   const list = members().filter(m => m.gaining_base === me.base_id && m.dir !== 'in').sort((a, b) => String(a.rnltd).localeCompare(String(b.rnltd)));
-  const sponsors = S.profiles.filter(p => p.base_id === me.base_id && p.status === 'active' && p.roles.includes('sponsor')).sort(sortByName);
   if (!list.length) { el('binbound').innerHTML = emp('ti-plane-arrival', 'Nobody is inbound to ' + baseName(me.base_id) + ' yet.'); return; }
   el('binbound').innerHTML = list.map(m => {
     const arrived = m.rnltd && m.rnltd <= today();
     const st = arrived ? pill('pn', 'Arrived') : m.handoff === 'complete' ? pill('pp', 'En route') : pill('pa', 'Out-processing');
     const sp = m.sponsor_id ? P(m.sponsor_id) : null, si = stats(m, 'in');
-    const spHtml = sp ? dmr('ti-friends', 'Sponsor ' + sp.name) : sponsors.length ? `<label class="fl" for="sa-${m.id}" style="margin-top:10px">Assign a sponsor</label><div class="brow"><select class="fs" id="sa-${m.id}" style="flex:1;margin:0">${sponsors.map(s => opt(s.id, s.name)).join('')}</select><button class="sbtn" onclick="assignSponsor('${m.id}')">Assign</button></div>` : `<div class="ts" style="margin-top:8px">No sponsors at this base yet. Give someone the Sponsor role in Users.</div>`;
+    const spHtml = sp ? dmr('ti-friends', 'Sponsor ' + sp.name) : `<div class="ts" style="margin-top:8px;color:#7A4809">No sponsor yet. The squadron CSS assigns one.</div>`;
     return `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">From ${esc(baseName(m.base_id))} · RNLTD ${esc(fmt(m.rnltd))}</div></div>${st}</div><div class="ts" style="margin-top:8px">${m.handoff === 'complete' ? 'In-processing ' + si.pct + '% complete' : 'Record arrives when ' + esc(baseName(m.base_id)) + ' signs their final out'}</div>${spHtml}</div>`;
   }).join('');
 }
@@ -1323,8 +1382,59 @@ async function assignSponsor(memberId) {
   if (!sid) return;
   if (!(await upd('profiles', { id: memberId }, { sponsor_id: sid }))) return;
   await notifySponsorPair(m, s);
-  toast('Sponsor assigned and both of them notified.'); drawMpf();
+  toast('Sponsor assigned and both of them notified.'); drawRole();
 }
+// ---------------------------------------------------------------------
+// Squadron CSS: assigns sponsors and decides who can be a sponsor
+// ---------------------------------------------------------------------
+function cssPool() {
+  // Members leaving this base or arriving at it, optionally just this squadron.
+  const base = me.base_id, mine = ui.cssMine !== false && !!me.unit;
+  return members().filter(m => m.id !== me.id && m.dir !== 'none' && (m.base_id === base || m.gaining_base === base) && (!mine || m.unit === me.unit))
+    .sort((a, b) => String(a.rnltd || a.depart || '9999').localeCompare(String(b.rnltd || b.depart || '9999')));
+}
+function cssFilterBar() {
+  if (!me.unit) return '';
+  const mine = ui.cssMine !== false;
+  return `<div class="mtog" style="margin:0"><button class="mtb${mine ? ' on' : ''}" aria-pressed="${mine}" onclick="ui.cssMine=true;drawCss()">${esc(me.unit)}</button><button class="mtb${mine ? '' : ' on'}" aria-pressed="${!mine}" onclick="ui.cssMine=false;drawCss()">Everyone at ${esc(baseName(me.base_id))}</button></div>`;
+}
+function sponsorSelect(m) {
+  const list = sponsorCandidates(m), cur = m.sponsor_id;
+  if (!list.length) return `<div class="ts" style="margin-top:8px">Nobody is a sponsor yet. Turn someone on in the Sponsors tab.</div>`;
+  return `<div class="brow" style="margin-top:10px"><label class="sr" for="sa-${m.id}">Sponsor for ${esc(m.name)}</label><select class="fs" id="sa-${m.id}" style="flex:1;margin:0">${list.map(s => opt(s.id, s.name + (s.unit ? ' · ' + s.unit : ''), s.id === cur)).join('')}</select><button class="sbtn" onclick="assignSponsor('${m.id}')">${cur ? 'Change' : 'Assign'}</button></div>`;
+}
+function cssMemberCard(m) {
+  const sp = m.sponsor_id ? P(m.sponsor_id) : null, arriving = m.gaining_base === me.base_id;
+  const line = arriving ? 'Arriving from ' + baseName(m.base_id) + ' · RNLTD ' + fmt(m.rnltd) : 'Leaving for ' + baseName(m.gaining_base) + ' · departs ' + fmt(m.depart);
+  const f = m.flags || {}, extras = [f.fam ? 'family' : '', f.pet ? 'pets' : '', f.pov ? 'vehicle' : '', f.efmp ? 'EFMP' : ''].filter(Boolean).join(', ');
+  return `<div class="card"><div class="row">${avatar(m)}<div style="flex:1;min-width:0"><div class="tn">${esc(m.name)}</div><div class="ts">${esc((m.unit ? m.unit + ' · ' : '') + line)}</div>${extras ? `<div class="ts">${esc('Bringing ' + extras)}</div>` : ''}</div>${sp ? pill('pn', 'Has sponsor') : pill('pa', 'Needs sponsor')}</div>${sp ? `<div class="ts" style="margin-top:8px"><i class="ti ti-friends" aria-hidden="true"></i> ${esc(sp.name)}</div>` : ''}${sponsorSelect(m)}${sp ? `<button class="lbtn" onclick="removeSponsor('${m.id}')">Remove sponsor</button>` : ''}</div>`;
+}
+function drawCss() {
+  el('cs-name').textContent = 'Squadron CSS · ' + (me.unit || baseName(me.base_id));
+  el('cs-sub').textContent = me.name;
+  const pool = cssPool(), need = pool.filter(m => !m.sponsor_id), have = pool.filter(m => m.sponsor_id);
+  setBadge('xbadge', need.length);
+  el('xneed').innerHTML = cssFilterBar() + (need.length ? `<div class="ts" style="margin:0">Pick a sponsor for each member. Both get a notification and can message each other in the app.</div>` + need.map(cssMemberCard).join('') : emp('ti-circle-check', 'Everyone has a sponsor.'));
+  el('xall').innerHTML = cssFilterBar() + (have.length ? have.map(cssMemberCard).join('') : emp('ti-friends', 'No sponsors assigned yet.'));
+  const people = S.profiles.filter(p => p.base_id === me.base_id && p.status === 'active' && p.id !== me.id).sort((a, b) => (b.roles.includes('sponsor') - a.roles.includes('sponsor')) || sortByName(a, b));
+  const load = id => S.profiles.filter(m => m.sponsor_id === id).length;
+  el('xpeople').innerHTML = `<div class="ts" style="margin:0;line-height:1.5">Switch on anyone who can sponsor. Only people switched on here appear when you assign sponsors.</div><div class="card">` +
+    (people.length ? people.map(p => `<div class="rule"><div style="flex:1;min-width:0"><div class="rt">${esc(p.name)}</div><div class="ts">${esc(p.unit || '')}${p.roles.includes('sponsor') ? ' · sponsoring ' + load(p.id) : ''}</div></div>${toggle(`onchange="setSponsorRole('${p.id}',this.checked)"`, p.roles.includes('sponsor'), 'Sponsor: ' + p.name)}</div>`).join('') : '<div class="ts">Nobody else at this base yet.</div>') + '</div>';
+}
+async function removeSponsor(memberId) {
+  const m = P(memberId);
+  if (!window.confirm('Remove the sponsor from ' + m.name + '?')) return;
+  if (await upd('profiles', { id: memberId }, { sponsor_id: null })) { toast('Sponsor removed.'); drawRole(); }
+}
+async function setSponsorRole(id, on) {
+  const p = P(id), roles = on ? Array.from(new Set(p.roles.concat(['sponsor']))) : p.roles.filter(r => r !== 'sponsor');
+  if (!roles.length) roles.push('member');
+  if (await upd('profiles', { id }, { roles })) {
+    if (on) await notify(id, 'system', 'You can now sponsor members', 'Your squadron CSS added you as a sponsor. Switch to Sponsor from your roles when you are assigned someone.');
+    toast(p.name.split(',')[0] + (on ? ' can now sponsor.' : ' is no longer a sponsor.')); drawRole();
+  }
+}
+
 function drawUsers() {
   const base = me.base_id;
   const reqs = S.role_requests.filter(r => r.status === 'pending' && (r.base_id === base || hasRole('global')));
@@ -1343,11 +1453,11 @@ function drawUsers() {
       card += '<div class="af" style="margin-top:11px"><h4>Roles</h4>' + ROLE_ORDER.map(r => {
         const lock = (r === 'mpf' || r === 'global') && !hasRole('global');
         return `<label class="cbx"><input type="checkbox" id="re-${r}"${p.roles.includes(r) ? ' checked' : ''}${lock || (p.id === me.id && r === 'mpf') ? ' disabled' : ''}> ${esc(ROLE_META[r].n)}${lock ? ' (global admin only)' : ''}</label>`;
-      }).join('') + `<label class="fl" for="re-office">Office, for workers and leads</label><select class="fs" id="re-office">${opt('', 'None', !p.office_id)}${offs.map(o => opt(o.id, o.name, p.office_id === o.id)).join('')}</select>${sponsorPicker(p)}<div class="brow"><button class="pbtn bgreen" onclick="saveRoles('${p.id}')">Save</button><button class="ibtn" onclick="ui.roleEdit=null;drawUsers()">Cancel</button></div></div>`;
+      }).join('') + `<label class="fl" for="re-office">Office, for workers and leads</label><select class="fs" id="re-office">${opt('', 'None', !p.office_id)}${offs.map(o => opt(o.id, o.name, p.office_id === o.id)).join('')}</select><div class="brow"><button class="pbtn bgreen" onclick="saveRoles('${p.id}')">Save</button><button class="ibtn" onclick="ui.roleEdit=null;drawUsers()">Cancel</button></div></div>`;
     } else if (p.status === 'active') {
       const sp = p.sponsor_id ? P(p.sponsor_id) : null;
       if (p.roles.includes('member')) card += `<div class="ts" style="margin-top:8px"><i class="ti ti-friends" aria-hidden="true"></i> Sponsor: ${esc(sp ? sp.name : 'none assigned')}</div>`;
-      card += `<div class="brow" style="margin-top:10px"><button class="ibtn" onclick="ui.roleEdit='${p.id}';drawUsers()">Edit roles, office and sponsor</button></div>`;
+      card += `<div class="brow" style="margin-top:10px"><button class="ibtn" onclick="ui.roleEdit='${p.id}';drawUsers()">Edit roles and office</button></div>`;
     }
     return card + '</div>';
   }).join('');
@@ -1424,7 +1534,7 @@ function bottleneckHTML(rows) {
 function drawCmd() {
   el('cd-name').textContent = 'Commander · ' + (me.unit || baseName(me.base_id));
   el('cd-sub').textContent = baseName(me.base_id);
-  const unit = members().filter(m => m.base_id === me.base_id && m.dir !== 'in' && (!me.unit || m.unit === me.unit) && m.id !== me.id);
+  const unit = members().filter(m => m.base_id === me.base_id && m.dir !== 'in' && m.dir !== 'none' && (!me.unit || m.unit === me.unit) && m.id !== me.id);
   const leaving = unit.filter(m => !m.depart || m.depart >= today());
   const avg = leaving.length ? Math.round(leaving.reduce((s, m) => s + stats(m, 'out').pct, 0) / leaving.length) : 0;
   const clean = leaving.filter(m => stats(m, 'out').over === 0).length;
@@ -1447,7 +1557,7 @@ function drawCmd() {
 function drawGlobal() {
   el('gl-name').textContent = me.name;
   const live = S.bases.filter(b => b.live), act = members();
-  const leaving = act.filter(m => m.dir !== 'in' && (!m.depart || m.depart >= today()));
+  const leaving = act.filter(m => m.dir !== 'in' && m.dir !== 'none' && (!m.depart || m.depart >= today()));
   const inFlight = act.filter(m => m.dir !== 'in' && m.handoff !== 'complete' && m.gaining_base).length;
   const over = act.reduce((s, m) => s + stats(m, 'out').over, 0);
   const bn = bottlenecks(act);
@@ -1461,6 +1571,7 @@ function drawGlobal() {
   const reqs = S.role_requests.filter(r => r.status === 'pending' && (r.wanted_role === 'mpf' || r.wanted_role === 'global'));
   const gb = el('gbadge'); gb.textContent = reqs.length; gb.classList.toggle('on', reqs.length > 0);
   el('greq').innerHTML = reqs.length ? reqs.map(roleReqCard).join('') : emp('ti-inbox', 'No pending requests for MPF or global admin rights.');
+  drawSupport();
   drawTipList('gtips', S.tips.filter(t => t.tier === 'global'), { tier: 'global', btn: 'bglob', canRemove: true });
 }
 async function toggleBase(id) { const b = B(id); if (await upd('bases', { id }, { live: !b.live })) { toast(b.name + (b.live ? ' is active. Members can sign up there.' : ' is off. New members cannot pick it.')); drawGlobal(); } }
@@ -1469,6 +1580,137 @@ async function addBase() {
   let id = slug(name.replace(/\b(AB|AFB|RAF|JB|JBSA)\b/g, '')) || slug(name);
   if (B(id)) id = id + '-' + S.bases.length;
   if (await ins('bases', { id, name, country: val('nb-c').trim() || null, live: false })) { ui.formOpen.base = false; toast(name + ' added. Activate it once its MPF is ready.'); drawGlobal(); }
+}
+
+// ---------------------------------------------------------------------
+// Help and feedback (anyone, signed in or not) and the Support tab (global admin)
+// ---------------------------------------------------------------------
+const HELP_KINDS = [['bug', 'Something is broken'], ['account', 'Sign-in or account help'], ['data', 'Wrong information in a checklist'], ['idea', 'Idea or suggestion'], ['other', 'Something else']];
+const HELP_LABEL = Object.fromEntries(HELP_KINDS);
+const FAQ = [
+  ['I forgot my password', 'On the sign-in screen, type your email and tap Forgot password. Open the link in the email and choose a new password. Check your spam folder. If nothing arrives within 10 minutes, send a message below and pick "Sign-in or account help".'],
+  ['I never got the confirmation email', 'On the sign-in screen, enter your email and password and tap Sign in, then tap "Resend confirmation email". Check spam. Some .mil inboxes block it, so send a message below if it still does not arrive.'],
+  ['My dates or gaining base changed', 'Open Profile, change Your move and tap Save. Your due dates update straight away.'],
+  ['A task is wrong or missing', 'Your base MPF looks after the checklist. Send a message below with the task name and what is wrong.'],
+  ['How do appointments work?', 'Open a task, tap Book a time, pick a day and time, then tap Request this time. The office confirms or rejects it and you get a notification either way.'],
+  ['Who assigns my sponsor?', 'Your squadron CSS. If you still have no sponsor a few weeks before you report, send a message below.']
+];
+let helpBack = 's-login';
+function openHelp(kind) {
+  const cur = document.querySelector('.scr.on');
+  if (cur && cur.id !== 's-help') helpBack = cur.id;
+  ui.helpKind = kind || 'bug'; ui.helpFile = null;
+  drawHelp(); show('s-help');
+}
+function closeHelp() { show(helpBack || (me ? SCREENS[role] || 's-roles' : 's-login')); }
+function drawHelp() {
+  const email = me ? me.email : val('lg-email').trim();
+  const mine = me && S ? S.support_tickets.filter(t => t.user_id === me.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))) : [];
+  let h = `<div class="card"><div class="dlbl">Quick answers</div>${FAQ.map(f => `<details class="faq"><summary>${esc(f[0])}</summary><p>${esc(f[1])}</p></details>`).join('')}</div>`;
+  h += `<div class="card"><div class="tn" style="margin-bottom:10px">Send us a message</div>
+<label class="fl" for="hp-kind">What is it about?</label><select class="fs" id="hp-kind">${HELP_KINDS.map(k => opt(k[0], k[1], k[0] === ui.helpKind)).join('')}</select>
+<label class="fl" for="hp-msg">Tell us what happened</label><textarea class="fi" id="hp-msg" placeholder="What were you trying to do, and what went wrong? Which screen or task?"></textarea>
+${me ? '' : `<label class="fl" for="hp-name">Your rank and name</label><input class="fi" id="hp-name" placeholder="SSgt Carter, James" autocomplete="name">`}
+<label class="fl" for="hp-email">Email for our reply</label><input class="fi" id="hp-email" type="email" value="${esc(email)}" placeholder="first.last@us.af.mil" autocomplete="email">
+${me ? `<div class="brow" style="margin-bottom:11px"><button class="ibtn" onclick="this.nextElementSibling.click()"><i class="ti ti-photo" aria-hidden="true"></i> Add a screenshot</button><input type="file" accept="image/*,.pdf" hidden onchange="pickHelpFile(this)"><span class="ts" id="hp-file" style="margin:0;flex:1">${ui.helpFile ? esc(ui.helpFile.name) : 'Optional'}</span></div>` : ''}
+<div class="fhint">Please leave out SSNs, DoD ID numbers and medical details.</div>
+<button class="pbtn bblue" id="hp-go" onclick="submitHelp()">Send</button></div>`;
+  if (mine.length) h += `<div class="dlbl" style="margin-top:4px">Your messages</div>` + mine.map(t => `<div class="card"><div class="row"><div style="flex:1"><div class="tn">${esc(HELP_LABEL[t.kind] || 'Message')}</div><div class="ts">Sent ${esc(when(t.created_at))}</div></div>${ticketPill(t.status)}</div><div class="ts" style="margin-top:8px;white-space:pre-wrap">${esc(t.message)}</div>${t.reply ? `<div class="reply"><b>Reply:</b> ${esc(t.reply)}</div>` : ''}</div>`).join('');
+  el('helpbody').innerHTML = h;
+}
+function ticketPill(st) { return st === 'resolved' ? pill('pn', 'Resolved') : st === 'open' ? pill('pi', 'In progress') : pill('pa', 'New'); }
+function pickHelpFile(input) {
+  const f = input.files[0]; input.value = '';
+  if (!f) return;
+  if (f.size > MAX_FILE) { toast('That file is too big. The limit is 10 MB.', 'err'); return; }
+  ui.helpFile = f; el('hp-file').textContent = f.name;
+}
+async function submitHelp() {
+  const kind = val('hp-kind'), message = val('hp-msg').trim(), email = val('hp-email').trim().toLowerCase();
+  if (message.length < 5) { toast('Tell us a little more so we can help.', 'err'); return; }
+  if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Add an email so we can reply.', 'err'); return; }
+  if (navigator.onLine === false) { toast('Connect to the internet to send this.', 'err'); return; }
+  busy('hp-go', true, 'Sending');
+  const id = DB.newId();
+  let attachment_path = null, attachment_name = null;
+  if (me && ui.helpFile) {
+    attachment_path = me.id + '/support/' + id + '-' + safeName(ui.helpFile.name); attachment_name = ui.helpFile.name;
+    try { await DB.uploadFile('uploads', attachment_path, ui.helpFile); } catch (e) { attachment_path = null; attachment_name = null; toast('Screenshot not attached: ' + e.message, 'err'); }
+  }
+  const context = [me ? (ROLE_META[role] ? ROLE_META[role].n : 'Signed in') : 'Signed out', (helpBack || '').replace('s-', 'screen: '), 'PCS Path v15', navigator.userAgent.slice(0, 140)].join(' · ');
+  const row = { id, user_id: me ? me.id : null, email, name: me ? me.name : (val('hp-name').trim() || null), base_id: me ? me.base_id : null, kind, message: message.slice(0, 4000), context, attachment_path, attachment_name, status: 'new', reply: null, replied_at: null, created_at: new Date().toISOString() };
+  try {
+    await DB.insert('support_tickets', [row]);
+    if (S) S.support_tickets.push(row);
+  } catch (e) {
+    busy('hp-go', false);
+    toast(/relation|does not exist|schema cache|could not find/i.test(e.message) ? 'Help messages are not switched on yet. Your admin needs to run supabase/update-4.sql.' : 'Could not send. ' + e.message, 'err');
+    return;
+  }
+  // Live: the database tells the global admins (update-4.sql). The demo does it here.
+  if (DB.mode === 'demo' && S) await notifyMany(S.profiles.filter(p => p.roles.includes('global')).map(p => ({ user_id: p.id, kind: 'system', title: 'New help request: ' + (HELP_LABEL[kind] || kind), body: message.slice(0, 160) })));
+  ui.helpFile = null;
+  toast('Sent. You will get a reply by email' + (me ? ' and in the app.' : '.'));
+  drawHelp();
+}
+
+// Support tab (global admin)
+function drawSupport() {
+  const all = S.support_tickets.slice().sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+  const f = ui.supFilt || 'active', counts = { active: all.filter(t => t.status !== 'resolved').length, resolved: all.filter(t => t.status === 'resolved').length };
+  setBadge('gsbadge', all.filter(t => t.status === 'new').length);
+  const list = all.filter(t => f === 'active' ? t.status !== 'resolved' : t.status === 'resolved');
+  let h = `<div class="mtog" style="margin:0"><button class="mtb${f === 'active' ? ' on' : ''}" onclick="ui.supFilt='active';drawSupport()">Open (${counts.active})</button><button class="mtb${f === 'resolved' ? ' on' : ''}" onclick="ui.supFilt='resolved';drawSupport()">Resolved (${counts.resolved})</button></div>`;
+  if (!list.length) { el('gsupport').innerHTML = h + emp('ti-mood-happy', f === 'active' ? 'No open help requests.' : 'Nothing resolved yet.'); return; }
+  h += list.map(t => {
+    const who = t.user_id ? P(t.user_id) : null;
+    const mail = `mailto:${encodeURIComponent(t.email || '')}?subject=${encodeURIComponent('PCS Path: ' + (HELP_LABEL[t.kind] || 'your message'))}&body=${encodeURIComponent('Hi ' + ((who && who.name) || t.name || '') + ',\n\n')}`;
+    return `<div class="card"><div class="row"><div style="flex:1;min-width:0"><div class="tn">${esc(HELP_LABEL[t.kind] || t.kind)}</div><div class="ts">${esc((who && who.name) || t.name || 'Not signed in')} · ${esc(t.email || '')}${t.base_id ? ' · ' + esc(baseName(t.base_id)) : ''}</div><div class="ts">${esc(when(t.created_at))}</div></div>${ticketPill(t.status)}</div>
+<div style="font-size:12.5px;line-height:1.6;margin-top:9px;white-space:pre-wrap">${esc(t.message)}</div>
+${t.attachment_path ? `<div class="chips" style="margin-top:8px"><button class="chipbtn" onclick="openFileUrl('uploads','${esc(t.attachment_path)}')"><i class="ti ti-photo" aria-hidden="true"></i><span>${esc(t.attachment_name || 'Screenshot')}</span></button></div>` : ''}
+<div class="ts" style="margin-top:6px;font-size:10.5px">${esc(t.context || '')}</div>
+${t.reply ? `<div class="reply"><b>Your reply:</b> ${esc(t.reply)}</div>` : ''}
+${t.status === 'resolved' ? `<div class="brow" style="margin-top:10px"><button class="ibtn" onclick="setTicket('${t.id}','open')">Reopen</button></div>` : `<label class="sr" for="rp-${t.id}">Reply</label><textarea class="fi" id="rp-${t.id}" style="margin-top:10px;min-height:60px" placeholder="${t.user_id ? 'Reply. They get it as a notification in the app.' : 'Not signed in, so reply by email.'}"></textarea>
+<div class="brow">${t.user_id ? `<button class="sbtn" onclick="replyTicket('${t.id}',false)">Send reply</button>` : ''}<button class="ibtn" onclick="replyTicket('${t.id}',true)">${t.user_id ? 'Reply and resolve' : 'Mark resolved'}</button>${t.email ? `<a class="ibtn" style="text-decoration:none" href="${mail}">Email</a>` : ''}${t.kind === 'account' && t.email ? `<button class="ibtn" onclick="sendResetFor('${t.id}')">Send password reset</button>` : ''}</div>`}</div>`;
+  }).join('');
+  el('gsupport').innerHTML = h;
+}
+async function replyTicket(id, resolve) {
+  const t = S.support_tickets.find(x => x.id === id), text = (val('rp-' + id) || '').trim();
+  if (!text && !resolve) { toast('Write a reply first.', 'err'); return; }
+  const patch = { status: resolve ? 'resolved' : 'open' };
+  if (text) Object.assign(patch, { reply: text, replied_at: new Date().toISOString() });
+  if (!(await upd('support_tickets', { id }, patch))) return;
+  if (text && t.user_id) await notify(t.user_id, 'system', 'Reply from PCS Path support', text.slice(0, 400));
+  toast(text && t.user_id ? 'Reply sent.' : resolve ? 'Marked resolved.' : 'Saved.'); drawSupport();
+}
+async function setTicket(id, status) { if (await upd('support_tickets', { id }, { status })) drawSupport(); }
+async function sendResetFor(id) {
+  const t = S.support_tickets.find(x => x.id === id);
+  if (!window.confirm('Email a password reset link to ' + t.email + '?')) return;
+  try { await DB.resetPassword(t.email); } catch (e) { toast('Could not send: ' + e.message, 'err'); return; }
+  await upd('support_tickets', { id }, { status: 'open', reply: 'We emailed you a password reset link. Open it on your phone and choose a new password.', replied_at: new Date().toISOString() });
+  toast('Reset link sent to ' + t.email + '.'); drawSupport();
+}
+
+// Password reset (after opening the link in the email)
+function showReset() { show('s-reset'); setTimeout(() => { const e = el('rs-pass'); if (e) e.focus(); }, 50); }
+async function saveNewPassword() {
+  const p = val('rs-pass'), p2 = val('rs-pass2');
+  if (p.length < 8) { toast('Use at least 8 characters.', 'err'); return; }
+  if (p !== p2) { toast('The two passwords do not match. Tap the eye to check them.', 'err'); return; }
+  busy('rs-go', true, 'Saving');
+  try { await DB.updatePassword(p); } catch (e) { busy('rs-go', false); toast(e.message, 'err'); return; }
+  busy('rs-go', false); el('rs-pass').value = ''; el('rs-pass2').value = '';
+  try { history.replaceState(null, '', location.pathname + location.search.replace(/[?&]type=recovery/, '')); } catch (_) { /* ignore */ }
+  toast('Password changed. You are signed in.');
+  const uid = await DB.session();
+  if (uid) await enterAs(uid); else show('s-login');
+}
+async function resendConfirm() {
+  const email = val('lg-email').trim().toLowerCase();
+  if (!email) { toast('Enter your email first.', 'err'); return; }
+  try { await DB.resendConfirm(email); toast('Sent. Check your inbox and spam folder.'); el('lg-extra').innerHTML = ''; } catch (e) { toast(e.message, 'err'); }
 }
 
 boot();

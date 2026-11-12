@@ -189,6 +189,17 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .fbox{background:var(--b2);border-radius:var(--rm);padding:8px 11px;margin-bottom:12px}
 .chipbtn{display:inline-flex;align-items:center;gap:5px;background:var(--b2);border:1px solid var(--d3);border-radius:99px;padding:4px 9px;font-size:11px;color:var(--t1);cursor:pointer;font-family:var(--fn);max-width:100%}
 .chipbtn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fab{position:fixed;bottom:18px;right:max(16px,calc(50vw - 179px));width:46px;height:46px;border-radius:50%;background:#1A5FA8;color:#fff;border:none;box-shadow:0 4px 14px rgba(0,0,0,.25);display:none;align-items:center;justify-content:center;font-size:22px;cursor:pointer;z-index:40}
+.fab.on{display:flex}
+.scr.on{padding-bottom:64px}
+details.faq{border-top:1px solid var(--d3);padding:10px 0}
+details.faq:first-of-type{border-top:none;padding-top:0}
+details.faq summary{cursor:pointer;font-size:12.5px;font-weight:600;list-style:none;display:flex;justify-content:space-between;gap:8px}
+details.faq summary::-webkit-details-marker{display:none}
+details.faq summary:after{content:"+";color:var(--t3);font-weight:400}
+details.faq[open] summary:after{content:"\2212"}
+details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
+.reply{background:#E6F1FB;color:#0D4680;border-radius:var(--rm);padding:9px 11px;font-size:12.5px;line-height:1.55;margin-top:9px;white-space:pre-wrap}
 .boot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:60vh;color:var(--t3);font-size:12.5px;text-align:center;padding:24px}
 .boot i{font-size:30px}
 </style>
@@ -196,6 +207,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <body>
 <div class="shell">
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<button class="fab" id="fab" aria-label="Help and feedback" onclick="openHelp()"><i class="ti ti-help" aria-hidden="true"></i></button>
 <div class="offbar" id="offbar"><i class="ti ti-wifi-off" style="font-size:14px" aria-hidden="true"></i><span>Offline. Showing your saved data. Changes sync when you reconnect.</span></div>
 
 <div id="s-boot" class="scr on"><div class="boot" id="bootmsg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading PCS Path</div></div>
@@ -210,6 +222,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="pw"><input class="fi" id="lg-pass" type="password" placeholder="Password" autocomplete="current-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('lg-pass',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
 <button class="pbtn bblue" type="submit" id="lg-go">Sign in</button>
 <div class="linkrow"><button type="button" class="lbtn" onclick="startSignup()">Create an account</button><button type="button" class="lbtn" onclick="forgot()">Forgot password?</button></div>
+<div id="lg-extra"></div>
+<div style="text-align:center"><button type="button" class="lbtn" onclick="openHelp('account')"><i class="ti ti-lifebuoy" aria-hidden="true"></i> Can't sign in? Get help</button></div>
 <div id="demolist"></div>
 <a class="ibtn" href="share.html" style="text-align:center;text-decoration:none;display:block;padding:9px"><i class="ti ti-share" aria-hidden="true"></i> Share PCS Path with someone</a>
 <div class="foot">PCS Path v12 &middot; prototype<br>Tasks from the RAF Mildenhall checklist &middot; demo people are fictional</div>
@@ -238,7 +252,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div id="su-2" class="tab"><div class="pad">
 <div style="font-size:11.5px;color:var(--t2);line-height:1.55">This tells us which checklist to build for you. You can change it later if your orders change.</div>
 <label class="fl" for="su-dir">What are you doing</label>
-<select class="fs" id="su-dir" onchange="suDirChanged()"><option value="out">Out-processing, I am leaving this base</option><option value="in">In-processing, I just arrived here</option><option value="both">Both, I am mid-move</option></select>
+<select class="fs" id="su-dir" onchange="suDirChanged()"><option value="out">Out-processing, I am leaving this base</option><option value="in">In-processing, I just arrived here</option><option value="both">Both, I am mid-move</option><option value="none">None of the above, I am not moving (staff or sponsor)</option></select>
+<div id="su-nonemsg" class="card soft" style="display:none"><div class="ts" style="margin:0;line-height:1.55">No checklist or dates needed. Your MPF approves your account and gives you your job in the app, such as office worker, sponsor or squadron CSS. If you get orders later, change this in your Profile.</div></div>
+<div id="su-movewrap">
 <div id="su-gainwrap"><label class="fl" for="su-gain">Gaining base</label><select class="fs" id="su-gain"></select></div>
 <div class="g2">
 <div id="su-depwrap"><label class="fl" for="su-dep">Departure date</label><input class="fi" id="su-dep" type="date"></div>
@@ -247,6 +263,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="fhint">RNLTD is your report-no-later-than date at the gaining base. Due dates are worked out from these.</div>
 <label class="fl" for="su-type">Move type</label>
 <select class="fs" id="su-type"><option>OCONUS to OCONUS</option><option>OCONUS to CONUS</option><option>CONUS to OCONUS</option><option>CONUS to CONUS</option></select>
+</div>
 <div class="brow"><button class="ibtn" onclick="suNext(1)">Back</button><button class="pbtn bblue" onclick="suNext(3)">Continue</button></div>
 </div></div>
 <div id="su-3" class="tab"><div class="pad">
@@ -254,6 +271,21 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="card" id="su-flags"></div>
 <div class="brow"><button class="ibtn" onclick="suNext(2)">Back</button><button class="pbtn bblue" id="su-go" onclick="submitProfile()">Submit for review</button></div>
 </div></div>
+</div>
+
+<div id="s-reset" class="scr">
+<div class="hdr hb"><h2>Choose a new password</h2><p>You opened a password reset link</p></div>
+<div class="pad">
+<label class="fl" for="rs-pass">New password</label><div class="pw"><input class="fi" id="rs-pass" type="password" placeholder="At least 8 characters" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('rs-pass',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
+<label class="fl" for="rs-pass2">Confirm new password</label><div class="pw"><input class="fi" id="rs-pass2" type="password" placeholder="Type it again" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('rs-pass2',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
+<button class="pbtn bblue" id="rs-go" onclick="saveNewPassword()">Save new password</button>
+<button class="ibtn" style="width:100%" onclick="openHelp('account')">Having trouble? Get help</button>
+</div>
+</div>
+
+<div id="s-help" class="scr">
+<div class="hdr hb"><div class="row"><button class="ibtn" style="color:#fff;border-color:rgba(255,255,255,.4)" aria-label="Back" onclick="closeHelp()"><i class="ti ti-arrow-left" aria-hidden="true"></i></button><div style="flex:1"><h2>Help and feedback</h2><p>Quick answers, or send us a message</p></div></div></div>
+<div class="pad" id="helpbody"></div>
 </div>
 
 <div id="s-pending" class="scr">
@@ -364,6 +396,19 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div id="ct-tips" class="tab"><div class="pad" id="ctips"></div></div>
 </div>
 
+<div id="s-css" class="scr">
+<div class="hdr hs"><h2 id="cs-name">Squadron CSS</h2><p id="cs-sub"></p></div>
+<div class="nav">
+<button class="nb" id="xn-need" onclick="tab('need')"><i class="ti ti-user-question" aria-hidden="true"></i>Needs sponsor<span class="dotb" id="xbadge">0</span></button>
+<button class="nb" id="xn-all" onclick="tab('all')"><i class="ti ti-friends" aria-hidden="true"></i>Assigned</button>
+<button class="nb" id="xn-people" onclick="tab('people')"><i class="ti ti-users" aria-hidden="true"></i>Sponsors</button>
+<button class="nb" onclick="switchRole()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Switch</button>
+</div>
+<div id="xt-need" class="tab"><div class="pad" id="xneed"></div></div>
+<div id="xt-all" class="tab"><div class="pad" id="xall"></div></div>
+<div id="xt-people" class="tab"><div class="pad" id="xpeople"></div></div>
+</div>
+
 <div id="s-mpf" class="scr">
 <div class="hdr hg"><h2 id="mp-name">Base MPF super admin</h2><p id="mp-sub"></p></div>
 <div class="nav">
@@ -419,19 +464,21 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <button class="nb" id="gn-health" onclick="tab('health')"><i class="ti ti-activity" aria-hidden="true"></i>Health</button>
 <button class="nb" id="gn-bases" onclick="tab('bases')"><i class="ti ti-building" aria-hidden="true"></i>Bases</button>
 <button class="nb" id="gn-req" onclick="tab('req')"><i class="ti ti-id-badge" aria-hidden="true"></i>Requests<span class="dotb" id="gbadge">0</span></button>
+<button class="nb" id="gn-support" onclick="tab('support')"><i class="ti ti-lifebuoy" aria-hidden="true"></i>Support<span class="dotb" id="gsbadge">0</span></button>
 <button class="nb" id="gn-tips" onclick="tab('tips')"><i class="ti ti-bulb" aria-hidden="true"></i>Tips</button>
 <button class="nb" onclick="switchRole()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Switch</button>
 </div>
 <div id="gt-health" class="tab"><div id="ghealth"></div></div>
 <div id="gt-bases" class="tab"><div class="pad" id="gbases"></div></div>
 <div id="gt-req" class="tab"><div class="pad" id="greq"></div></div>
+<div id="gt-support" class="tab"><div class="pad" id="gsupport"></div></div>
 <div id="gt-tips" class="tab"><div class="pad" id="gtips"></div></div>
 </div>
 
 </div>
-<script src="config.js?v=13"></script>
-<script src="seed.js?v=13"></script>
-<script src="store.js?v=13"></script>
-<script src="app.js?v=13"></script>
+<script src="config.js?v=15"></script>
+<script src="seed.js?v=15"></script>
+<script src="store.js?v=15"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>

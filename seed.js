@@ -153,7 +153,7 @@
     { email: 'webb@us.af.mil', n: 'SSgt Webb', d: 'Office worker who is also PCSing', i: 'ti-users', c: '#3C6E12' },
     { email: 'alvarez@us.af.mil', n: 'TSgt Alvarez', d: 'Sponsor and office lead', i: 'ti-friends', c: '#8A4B10' },
     { email: 'chen@us.af.mil', n: 'MSgt Chen', d: 'Base MPF super admin', i: 'ti-building', c: '#3C6E12' },
-    { email: 'davis@us.af.mil', n: 'MSgt Davis', d: 'Base counselor and commander', i: 'ti-user-check', c: '#0D4680' },
+    { email: 'davis@us.af.mil', n: 'MSgt Davis', d: 'Counselor, squadron CSS and commander', i: 'ti-user-check', c: '#0D4680' },
     { email: 'reed@us.af.mil', n: 'Mr Reed', d: 'Global admin', i: 'ti-shield-lock', c: '#554CBB' },
     { email: 'nguyen@us.af.mil', n: 'Capt Nguyen', d: 'New profile awaiting MPF review', i: 'ti-clock', c: '#7A4809' }
   ];
@@ -162,7 +162,7 @@
     var T = dayFromToday;
     var now = new Date();
     function ts(daysAgo, h, m) { var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, h || 9, m || 0); return d.toISOString(); }
-    var db = { version: 2, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
+    var db = { version: 3, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
 
     db.bases = [
       { id: 'mildenhall', name: 'RAF Mildenhall', country: 'UK', live: true },
@@ -193,7 +193,7 @@
       P({ id: 'u-webb', email: 'webb@us.af.mil', name: 'SSgt Webb, Sarah', unit: '48 AMDS', roles: ['member', 'worker'], office_id: MEDREC, gaining_base: 'travis', depart: T(60), rnltd: T(75), move_type: 'OCONUS to CONUS', flags: { cust: true, moto: true } }),
       P({ id: 'u-alvarez', email: 'alvarez@us.af.mil', name: 'TSgt Alvarez, Marco', roles: ['sponsor', 'lead'], office_id: MEDREC }),
       P({ id: 'u-chen', email: 'chen@us.af.mil', name: 'MSgt Chen, Linda', unit: '100 FSS', roles: ['mpf'] }),
-      P({ id: 'u-davis', email: 'davis@us.af.mil', name: 'MSgt Davis, Robert', roles: ['counsel', 'cmd'] }),
+      P({ id: 'u-davis', email: 'davis@us.af.mil', name: 'MSgt Davis, Robert', roles: ['counsel', 'css', 'cmd'] }),
       P({ id: 'u-reed', email: 'reed@us.af.mil', name: 'Mr Reed, Alan', unit: 'HQ AFPC', base_id: null, roles: ['global'] }),
       P({ id: 'u-nguyen', email: 'nguyen@us.af.mil', name: 'Capt Nguyen, David', unit: '100 MXS', status: 'pending', gaining_base: 'osan', depart: T(70), rnltd: T(84), flags: { fam: true, sipr: true }, created_at: ts(1) }),
       P({ id: 'u-kim', name: 'A1C Kim, Jae', gaining_base: 'kadena', depart: T(37), rnltd: T(52) }),

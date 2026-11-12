@@ -51,6 +51,18 @@ Every office then takes bookings Monday to Friday, 0800 to 1600, in 30-minute
 slots, with no setup. Members pick a free time and it is confirmed straight
 away. Office leads can block times or change their hours in the app.
 
+## 2d. Squadron CSS, "not moving" accounts, and office confirmations
+
+Run [`supabase/update-4.sql`](supabase/update-4.sql) the same way. It:
+
+- lets staff and sponsors sign up as **not moving**;
+- adds the **Squadron CSS** role, which assigns sponsors and decides who can be one;
+- notifies an office when a member requests a time. The office then confirms
+  or rejects it, and the member gets a notification either way.
+- turns on **Help and feedback**. Anyone can send a message from the **?**
+  button or from "Can't sign in? Get help". Global admins answer in the
+  **Support** tab, and can send a password reset link from there.
+
 ## 3. Turn on sign-in
 
 1. Open **Authentication** → **URL Configuration**.

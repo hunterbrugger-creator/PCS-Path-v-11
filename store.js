@@ -15,7 +15,7 @@
 
   var TABLES = ['bases', 'offices', 'profiles', 'tasks', 'task_progress', 'tips', 'messages',
     'notifications', 'appt_requests', 'slots', 'role_requests', 'reminder_rules', 'sponsor_prep',
-    'task_files', 'member_files'];
+    'task_files', 'member_files', 'support_tickets'];
 
   function newId() {
     if (window.crypto && crypto.randomUUID) { try { return crypto.randomUUID(); } catch (e) { /* insecure context */ } }
@@ -40,7 +40,7 @@
     if (this.db) return;
     var raw = lsGet(LKEY);
     if (raw) { try { this.db = JSON.parse(raw); } catch (e) { this.db = null; } }
-    if (!this.db || this.db.version !== 2) { this.db = window.PCS_SEED.build(); this._save(); }
+    if (!this.db || this.db.version !== 3) { this.db = window.PCS_SEED.build(); this._save(); }
   };
   Local.prototype._save = function () { lsSet(LKEY, JSON.stringify(this.db)); };
   Local.prototype.reset = function () { lsDel(LKEY); lsDel(LUID); this.db = null; this._load(); };
@@ -77,6 +77,7 @@
   Local.prototype.signOut = async function () { lsDel(LUID); };
   Local.prototype.resetPassword = async function () { throw new Error('Demo accounts all use the password "demo".'); };
   Local.prototype.updatePassword = async function () { };
+  Local.prototype.resendConfirm = async function () { throw new Error('Demo accounts do not need confirming.'); };
   Local.prototype.listBases = async function () {
     this._load();
     return clone(this.db.bases).sort(function (a, b) { return a.name.localeCompare(b.name); });
@@ -181,12 +182,14 @@
     this.mode = 'live';
     this.uid = null;
     this.onRecovery = null;
+    // Opened from a password-reset email: the link carries type=recovery.
+    this.recovering = /type=recovery/.test(location.hash) || /type=recovery/.test(location.search);
     var self = this;
     this.sb = window.supabase.createClient(CFG.supabaseUrl, CFG.supabaseAnonKey, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
     });
     this.sb.auth.onAuthStateChange(function (ev) {
-      if (ev === 'PASSWORD_RECOVERY' && self.onRecovery) self.onRecovery();
+      if (ev === 'PASSWORD_RECOVERY') { self.recovering = true; if (self.onRecovery) self.onRecovery(); }
     });
   }
   function err(r) { if (r.error) throw new Error(r.error.message); return r.data; }
@@ -225,7 +228,10 @@
   Live.prototype.resetPassword = async function (email) {
     err(await this.sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname }));
   };
-  Live.prototype.updatePassword = async function (p) { err(await this.sb.auth.updateUser({ password: p })); };
+  Live.prototype.updatePassword = async function (p) { err(await this.sb.auth.updateUser({ password: p })); this.recovering = false; };
+  Live.prototype.resendConfirm = async function (email) {
+    err(await this.sb.auth.resend({ type: 'signup', email: email, options: { emailRedirectTo: location.origin + location.pathname } }));
+  };
   Live.prototype.listBases = async function () {
     return err(await this.sb.from('bases').select('*').order('name'));
   };
