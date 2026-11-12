@@ -40,7 +40,7 @@
     if (this.db) return;
     var raw = lsGet(LKEY);
     if (raw) { try { this.db = JSON.parse(raw); } catch (e) { this.db = null; } }
-    if (!this.db || this.db.version !== 3) { this.db = window.PCS_SEED.build(); this._save(); }
+    if (!this.db || this.db.version !== 4) { this.db = window.PCS_SEED.build(); this._save(); }
   };
   Local.prototype._save = function () { lsSet(LKEY, JSON.stringify(this.db)); };
   Local.prototype.reset = function () { lsDel(LKEY); lsDel(LUID); this.db = null; this._load(); };

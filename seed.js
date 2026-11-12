@@ -162,7 +162,7 @@
     var T = dayFromToday;
     var now = new Date();
     function ts(daysAgo, h, m) { var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, h || 9, m || 0); return d.toISOString(); }
-    var db = { version: 3, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
+    var db = { version: 4, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
 
     db.bases = [
       { id: 'mildenhall', name: 'RAF Mildenhall', country: 'UK', live: true },
@@ -199,7 +199,7 @@
       P({ id: 'u-kim', name: 'A1C Kim, Jae', gaining_base: 'kadena', depart: T(37), rnltd: T(52) }),
       P({ id: 'u-reyes', name: 'SrA Reyes, Priya', gaining_base: 'aviano', depart: T(42), rnltd: T(56), flags: { cust: true } }),
       P({ id: 'u-walker', name: 'SSgt Walker, Tom', gaining_base: 'ramstein', depart: T(51), rnltd: T(66), flags: { fam: true, pov: true } }),
-      P({ id: 'u-doyle', name: 'SSgt Doyle, Sam', roles: ['sponsor'] }),
+      P({ id: 'u-doyle', name: 'SSgt Doyle, Sam', roles: ['sponsor'], dir: 'none' }),
       P({ id: 'u-morris', name: 'TSgt Morris, Kelly', base_id: 'kadena', unit: '100 ARW', gaining_base: 'mildenhall', depart: T(-12), rnltd: T(-4), handoff: 'complete', sponsor_id: 'u-doyle' }),
       P({ id: 'u-lee', name: 'A1C Lee, Ben', base_id: 'travis', unit: '100 LRS', gaining_base: 'mildenhall', depart: T(4), rnltd: T(12), move_type: 'CONUS to OCONUS', handoff: 'complete' }),
       P({ id: 'u-park', name: 'SSgt Park, Hana', base_id: 'aviano', unit: '100 MXS', gaining_base: 'mildenhall', depart: T(20), rnltd: T(30) }),
@@ -260,21 +260,61 @@
       { id: 'sp-4', member_id: 'u-carter', title: 'Reserve loan closet items', body: 'Basic kitchen and bedding until household goods arrive', done: false, created_at: ts(3) },
       { id: 'sp-5', member_id: 'u-carter', title: 'Introduce to section supervisor before arrival', body: 'A quick call ahead of day one helps more than anything else', done: false, created_at: ts(3) }
     ];
-    // Appointment slots for Medical Records over the next four weeks.
-    var monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7));
-    var si = 0;
-    for (var w = 0; w < 4; w++) {
-      [1, 2, 3].forEach(function (dow) {
-        ['10:00', '10:30'].forEach(function (tm) {
-          var d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + w * 7 + dow);
-          si++;
-          // Only booked or blocked times are stored; every other time in office hours is open.
-          if (si === 2 || si === 5 || si === 4) db.slots.push({ id: 'slot-' + si, office_id: MEDREC, slot_day: iso(d), slot_time: tm, member_id: si === 2 ? 'u-walker' : si === 5 ? 'u-reyes' : null, blocked: si === 4 });
-        });
-      });
-    }
+    // Appointments: two confirmed, two waiting for the office, and lunch blocked.
+    function weekday(n) { var d = new Date(now.getFullYear(), now.getMonth(), now.getDate()); var c = 0; while (c < n) { d.setDate(d.getDate() + 1); if (d.getDay() > 0 && d.getDay() < 6) c++; } return iso(d); }
+    var HOUSING = 'mil-off-housing';
+    db.slots = [
+      { id: 'slot-1', office_id: MEDREC, slot_day: weekday(1), slot_time: '09:00', member_id: 'u-walker', blocked: false },
+      { id: 'slot-2', office_id: MEDREC, slot_day: weekday(2), slot_time: '13:30', member_id: 'u-reyes', blocked: false },
+      { id: 'slot-3', office_id: MEDREC, slot_day: weekday(1), slot_time: '10:00', member_id: 'u-carter', blocked: false },
+      { id: 'slot-4', office_id: HOUSING, slot_day: weekday(3), slot_time: '11:00', member_id: 'u-kim', blocked: false },
+      { id: 'slot-5', office_id: MEDREC, slot_day: weekday(2), slot_time: '12:00', member_id: null, blocked: true },
+      { id: 'slot-6', office_id: MEDREC, slot_day: weekday(2), slot_time: '12:30', member_id: null, blocked: true }
+    ];
     db.appt_requests = [
-      { id: 'ar-1', member_id: 'u-carter', task_id: 'mil-o27', office_id: MEDREC, note: 'Morning preferred', status: 'pending', slot_id: null, created_at: ts(1) }
+      { id: 'ar-1', member_id: 'u-walker', task_id: 'mil-o27', office_id: MEDREC, note: '', status: 'confirmed', slot_id: 'slot-1', created_at: ts(3) },
+      { id: 'ar-2', member_id: 'u-reyes', task_id: 'mil-o27', office_id: MEDREC, note: '', status: 'confirmed', slot_id: 'slot-2', created_at: ts(2) },
+      { id: 'ar-3', member_id: 'u-carter', task_id: 'mil-o27', office_id: MEDREC, note: '', status: 'pending', slot_id: 'slot-3', created_at: ts(0, 8, 5) },
+      { id: 'ar-4', member_id: 'u-kim', task_id: 'mil-o23', office_id: HOUSING, note: '', status: 'pending', slot_id: 'slot-4', created_at: ts(0, 7, 50) }
+    ];
+    db.notifications.push(
+      { id: 'n-4', user_id: 'u-webb', kind: 'appt', title: 'Appointment request: SSgt Carter, James', body: 'Medical records, ' + weekday(1) + ' 1000. Confirm or reject it under Appts.', is_read: false, dedupe_key: null, created_at: ts(0, 8, 5) },
+      { id: 'n-5', user_id: 'u-alvarez', kind: 'appt', title: 'Appointment request: SSgt Carter, James', body: 'Medical records, ' + weekday(1) + ' 1000. Confirm or reject it under Appts.', is_read: false, dedupe_key: null, created_at: ts(0, 8, 5) },
+      { id: 'n-6', user_id: 'u-chen', kind: 'appt', title: 'Appointment request: A1C Kim, Jae', body: 'Clear housing office at Housing Office. Nobody is linked to that office, so confirm or reject it under Appts.', is_read: false, dedupe_key: null, created_at: ts(0, 7, 50) },
+      { id: 'n-7', user_id: 'u-reed', kind: 'system', title: 'New help request from SSgt Carter, James', body: 'The Upload a file button on Medical records does not open my photos on my iPhone.', is_read: false, dedupe_key: null, created_at: ts(0, 11, 20) },
+      { id: 'n-8', user_id: 'u-reed', kind: 'system', title: 'New help request from A1C Lopez, Maria', body: 'I asked for a password reset twice but the email never came.', is_read: false, dedupe_key: null, created_at: ts(0, 12, 2) }
+    );
+
+    // Sample blank forms on tasks, and a file a member uploaded.
+    db.files = {};
+    function samplePdf(title, lines) {
+      var text = ['BT /F1 18 Tf 60 740 Td (' + title + ') Tj ET'].concat(lines.map(function (l, i) { return 'BT /F1 11 Tf 60 ' + (705 - i * 18) + ' Td (' + l + ') Tj ET'; })).join('\n');
+      var objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+        '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+        '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>', '<< /Length ' + text.length + ' >>\nstream\n' + text + '\nendstream'];
+      var out = '%PDF-1.4\n', offs = [];
+      objs.forEach(function (o, i) { offs.push(out.length); out += (i + 1) + ' 0 obj\n' + o + '\nendobj\n'; });
+      var x = out.length;
+      out += 'xref\n0 6\n0000000000 65535 f \n' + offs.map(function (o) { return ('000000000' + o).slice(-10) + ' 00000 n \n'; }).join('') + 'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + x + '\n%%EOF';
+      return { url: 'data:application/pdf;base64,' + btoa(out), size: out.length };
+    }
+    function addForm(id, taskId, name, lines) {
+      var pdf = samplePdf(name, lines), path = 'mildenhall/' + taskId + '/' + id + '-' + name.replace(/[^A-Za-z0-9._-]+/g, '_');
+      db.files['forms/' + path] = pdf.url;
+      db.task_files.push({ id: id, task_id: taskId, name: name, path: path, size: pdf.size, uploaded_by: 'u-chen', created_at: ts(6) });
+    }
+    db.task_files = [];
+    addForm('tf-1', 'mil-o1', 'PPTY Form 75 (sample).pdf', ['Sample form for the PCS Path demo.', 'Name, rank, DoD ID: ______________________', 'Pickup date requested: __________________', 'Send with your orders to the TMO org box.']);
+    addForm('tf-2', 'mil-o38', 'Out-processing checklist (sample).pdf', ['Sample checklist for the PCS Path demo.', 'Bring this to squadron final out for wet signatures.', 'CSS ____   UTM ____   CSA ____   SEL ____']);
+    var orders = samplePdf('PCS orders (sample)', ['Demo file uploaded by A1C Kim.', 'Real uploads appear here for the office that signs the task off.']);
+    db.files['uploads/u-kim/mil-o27/mf-1-PCS_orders_sample.pdf'] = orders.url;
+    db.member_files = [{ id: 'mf-1', member_id: 'u-kim', task_id: 'mil-o27', name: 'PCS orders (sample).pdf', path: 'u-kim/mil-o27/mf-1-PCS_orders_sample.pdf', size: orders.size, created_at: ts(1) }];
+
+    // Help and feedback messages for the global admin's Support tab.
+    db.support_tickets = [
+      { id: 'st-1', user_id: 'u-carter', email: 'carter@us.af.mil', name: 'SSgt Carter, James', base_id: 'mildenhall', kind: 'bug', message: 'The Upload a file button on Medical records does not open my photos on my iPhone.', context: 'Member · screen: member · PCS Path v15 · iPhone Safari', attachment_path: null, attachment_name: null, status: 'new', reply: null, replied_at: null, created_at: ts(0, 11, 20) },
+      { id: 'st-2', user_id: null, email: 'maria.lopez@us.af.mil', name: 'A1C Lopez, Maria', base_id: null, kind: 'account', message: 'I asked for a password reset twice but the email never came.', context: 'Signed out · screen: login · PCS Path v15', attachment_path: null, attachment_name: null, status: 'new', reply: null, replied_at: null, created_at: ts(0, 12, 2) },
+      { id: 'st-3', user_id: 'u-webb', email: 'webb@us.af.mil', name: 'SSgt Webb, Sarah', base_id: 'mildenhall', kind: 'idea', message: 'Could offices see a list of everything booked for today?', context: 'Office worker · screen: worker · PCS Path v15', attachment_path: null, attachment_name: null, status: 'resolved', reply: 'Good idea. Confirmed appointments now show under Appts, with today marked.', replied_at: ts(1), created_at: ts(3) }
     ];
     db.role_requests = [
       { id: 'rr-1', user_id: 'u-webb', name: 'SSgt Webb, Sarah', base_id: 'mildenhall', current_roles: 'Member, Office worker', wanted_role: 'lead', reason: 'Current lead is PCSing soon and I am taking over the office.', status: 'pending', created_at: ts(2) },
