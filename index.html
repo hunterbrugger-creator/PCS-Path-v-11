@@ -22,7 +22,10 @@ body{display:flex;justify-content:center;align-items:flex-start;padding:18px 0 4
 .shell{width:390px;background:var(--b1);border-radius:22px;overflow:hidden;box-shadow:0 6px 40px rgba(0,0,0,.13);min-height:82vh;position:relative}
 @media(max-width:430px){body{padding:0}.shell{width:100%;border-radius:0;min-height:100vh;box-shadow:none}}
 .scr{display:none}.scr.on{display:block}
-.hdr{padding:15px 17px;color:#fff}
+.hdr{padding:15px 17px;color:#fff;position:relative}
+.gbtn{position:absolute;right:12px;top:12px;display:flex;align-items:center;gap:4px;background:rgba(255,255,255,.16);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:99px;padding:4px 10px 4px 7px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--fn)}
+.gbtn i{font-size:15px}
+.hdr h2{padding-right:74px}
 .hdr h2{font-size:16px;font-weight:600;letter-spacing:-.01em}
 .hdr p{font-size:11.5px;opacity:.86;margin-top:3px}
 .hb{background:#1A5FA8}.hg{background:#3C6E12}.hd{background:#0D4680}.hgl{background:#292363}.hl{background:#0A5344}.hp{background:#554CBB}.hs{background:#8A4B10}
@@ -207,7 +210,7 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 <body>
 <div class="shell">
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<button class="fab" id="fab" aria-label="Help and feedback" onclick="openHelp()"><i class="ti ti-help" aria-hidden="true"></i></button>
+<button class="fab" id="fab" aria-label="Help, feedback and role guides" onclick="openHelp()"><i class="ti ti-help" aria-hidden="true"></i></button>
 <div class="offbar" id="offbar"><i class="ti ti-wifi-off" style="font-size:14px" aria-hidden="true"></i><span>Offline. Showing your saved data. Changes sync when you reconnect.</span></div>
 
 <div id="s-boot" class="scr on"><div class="boot" id="bootmsg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading PCS Path</div></div>
@@ -223,7 +226,7 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 <button class="pbtn bblue" type="submit" id="lg-go">Sign in</button>
 <div class="linkrow"><button type="button" class="lbtn" onclick="startSignup()">Create an account</button><button type="button" class="lbtn" onclick="forgot()">Forgot password?</button></div>
 <div id="lg-extra"></div>
-<div style="text-align:center"><button type="button" class="lbtn" onclick="openHelp('account')"><i class="ti ti-lifebuoy" aria-hidden="true"></i> Can't sign in? Get help</button></div>
+<div style="text-align:center"><button type="button" class="lbtn" onclick="openHelp('account')"><i class="ti ti-lifebuoy" aria-hidden="true"></i> Unable to sign in? Request assistance</button></div>
 <div id="demolist"></div>
 <a class="ibtn" href="share.html" style="text-align:center;text-decoration:none;display:block;padding:9px"><i class="ti ti-share" aria-hidden="true"></i> Share PCS Path with someone</a>
 <div class="foot">PCS Path v12 &middot; prototype<br>Tasks from the RAF Mildenhall checklist &middot; demo people are fictional</div>
@@ -279,12 +282,17 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 <label class="fl" for="rs-pass">New password</label><div class="pw"><input class="fi" id="rs-pass" type="password" placeholder="At least 8 characters" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('rs-pass',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
 <label class="fl" for="rs-pass2">Confirm new password</label><div class="pw"><input class="fi" id="rs-pass2" type="password" placeholder="Type it again" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('rs-pass2',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
 <button class="pbtn bblue" id="rs-go" onclick="saveNewPassword()">Save new password</button>
-<button class="ibtn" style="width:100%" onclick="openHelp('account')">Having trouble? Get help</button>
+<button class="ibtn" style="width:100%" onclick="openHelp('account')">Request assistance</button>
 </div>
 </div>
 
+<div id="s-guide" class="scr">
+<div class="hdr hb"><div class="row"><button class="ibtn" style="color:#fff;border-color:rgba(255,255,255,.4)" aria-label="Back" onclick="closeGuide()"><i class="ti ti-arrow-left" aria-hidden="true"></i></button><div style="flex:1"><h2 id="gd-title">Role guide</h2><p id="gd-sub"></p></div></div></div>
+<div class="pad" id="gd-body"></div>
+</div>
+
 <div id="s-help" class="scr">
-<div class="hdr hb"><div class="row"><button class="ibtn" style="color:#fff;border-color:rgba(255,255,255,.4)" aria-label="Back" onclick="closeHelp()"><i class="ti ti-arrow-left" aria-hidden="true"></i></button><div style="flex:1"><h2>Help and feedback</h2><p>Quick answers, or send us a message</p></div></div></div>
+<div class="hdr hb"><div class="row"><button class="ibtn" style="color:#fff;border-color:rgba(255,255,255,.4)" aria-label="Back" onclick="closeHelp()"><i class="ti ti-arrow-left" aria-hidden="true"></i></button><div style="flex:1"><h2>Help and feedback</h2><p>Frequently asked questions, role guides and assistance requests</p></div></div></div>
 <div class="pad" id="helpbody"></div>
 </div>
 
@@ -476,9 +484,9 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 </div>
 
 </div>
-<script src="config.js?v=16"></script>
-<script src="seed.js?v=16"></script>
-<script src="store.js?v=16"></script>
-<script src="app.js?v=16"></script>
+<script src="config.js?v=17"></script>
+<script src="seed.js?v=17"></script>
+<script src="store.js?v=17"></script>
+<script src="app.js?v=17"></script>
 </body>
 </html>

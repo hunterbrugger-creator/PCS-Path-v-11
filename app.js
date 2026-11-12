@@ -82,7 +82,7 @@ function toast(msg, kind) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { t.className = 'toast'; }, kind === 'err' ? 5200 : 3400);
 }
-const NO_FAB = { 's-boot': 1, 's-help': 1, 's-reset': 1, 's-signup': 1 };
+const NO_FAB = { 's-boot': 1, 's-help': 1, 's-reset': 1, 's-signup': 1, 's-guide': 1 };
 function show(id) {
   document.querySelectorAll('.scr').forEach(s => s.classList.toggle('on', s.id === id));
   const f = el('fab'); if (f) f.classList.toggle('on', !NO_FAB[id] && id !== 's-login');
@@ -408,7 +408,7 @@ async function submitProfile() {
     el('su-pass').value = ''; el('su-pass2').value = '';
     if (r.needsConfirm) {
       show('s-login'); el('lg-email').value = email;
-      toast('Almost done. Check your email and tap the confirmation link, then sign in.');
+      toast('Account created. Open the confirmation link sent to your email, then sign in.');
       return;
     }
     await enterAs(r.id);
@@ -481,12 +481,15 @@ function switchRole() { if (me && me.roles.length > 1) showRoles(); else signOut
 function enterRole(r) {
   role = r;
   show(SCREENS[r]);
+  guideButton(r);
   if (r === 'member') {
     if (!ui.dir) ui.dir = me.dir === 'in' ? 'in' : 'out';
     runReminders().then(() => { if (role === 'member') drawInbox(); });
   }
   drawRole();
   tab(ui.tabs[r] || TABS[r][1][0]);
+  let seen = false; try { seen = !!localStorage.getItem(GUIDE_SEEN + r); } catch (_) { seen = true; }
+  if (!seen && !(r === 'mpf' && !S.tasks.some(t => t.base_id === me.base_id))) { openGuide(r); return; }
   // A brand-new base gets the starter checklist automatically, no button needed.
   if (r === 'mpf' && me.base_id && !ui.autoStarter && !S.tasks.some(t => t.base_id === me.base_id)) { ui.autoStarter = true; loadStarter(); }
 }
@@ -556,7 +559,7 @@ function setFilt(f) {
 function drawTaskList() {
   const p = me, dir = ui.dir, box = el('mlist');
   let h = '';
-  if (p.dir === 'none') { box.innerHTML = emp('ti-home-check', 'You are not moving, so there is no PCS checklist. If you get orders, open Profile and change "What are you doing".'); return; }
+  if (p.dir === 'none') { box.innerHTML = emp('ti-home-check', 'No PCS checklist applies because you are not relocating. If you receive orders, update "What are you doing" in Profile.'); return; }
   if (dir === 'in' && !inBase(p)) { box.innerHTML = emp('ti-map-pin', 'Add your gaining base in Profile to see your in-processing checklist.'); return; }
   if (dir === 'out' && !p.depart) h += `<div class="card soft"><div class="ts">Add your departure date in Profile so we can work out your due dates.</div></div>`;
   const locked = dir === 'in' && !unlockedIn(p);
@@ -564,7 +567,7 @@ function drawTaskList() {
   const list = tasksFor(p, dir);
   if (!list.length) { box.innerHTML = h + emp('ti-list', baseName(dir === 'out' ? p.base_id : inBase(p)) + ' has not published its ' + (dir === 'out' ? 'out' : 'in') + '-processing list in PCS Path yet.'); return; }
   const shown = list.filter(t => { const s = stateOf(p, t); return ui.filt === 'all' || (ui.filt === 'todo' ? !isFinal(s) : isFinal(s)); });
-  if (!shown.length) { box.innerHTML = h + emp('ti-circle-check', ui.filt === 'done' ? 'Nothing completed yet' : 'You are all caught up'); return; }
+  if (!shown.length) { box.innerHTML = h + emp('ti-circle-check', ui.filt === 'done' ? 'No tasks have been completed yet.' : 'All tasks are complete. No action is required.'); return; }
   box.innerHTML = h + shown.map(t => taskCard(p, t, locked)).join('');
 }
 function taskCard(p, t, locked) {
@@ -589,10 +592,10 @@ function taskCard(p, t, locked) {
   if (pendingReq) rows += dmr('ti-calendar-event', 'Appointment requested. The office will offer you a time.');
   let btns = '', picker = '';
   if (!fin && !locked) {
-    if (s === 'submitted') btns += `<button class="ibtn" onclick="undoMine('${t.id}')">Undo, I am not done</button>`;
-    else btns += `<button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" onclick="markMine('${t.id}')">I have done my part</button>`;
+    if (s === 'submitted') btns += `<button class="ibtn" onclick="undoMine('${t.id}')">Withdraw completion</button>`;
+    else btns += `<button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" onclick="markMine('${t.id}')">Mark my part complete</button>`;
     if (off && bk) btns += `<button class="ibtn" onclick="cancelBooking('${bk.appt.id}')">${bk.appt.status === 'pending' ? 'Cancel request' : 'Cancel appointment'}</button>`;
-    else if (off && ui.book !== t.id) btns += `<button class="ibtn" onclick="openBook('${t.id}')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Book a time</button>`;
+    else if (off && ui.book !== t.id) btns += `<button class="ibtn" onclick="openBook('${t.id}')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Request appointment</button>`;
     if (off && ui.book === t.id && !bk) picker = bookPicker(t, off);
   }
   btns = picker + (btns ? '<div class="brow">' + btns + '</div>' : '');
@@ -651,7 +654,7 @@ async function uploadMine(taskId, input) {
   try { await DB.uploadFile('uploads', path, f); } catch (e) { toast('Upload failed. ' + e.message, 'err'); return; }
   if (await ins('member_files', { id, member_id: me.id, task_id: taskId, name: f.name, path, size: f.size })) {
     const off = t.office_id ? O(t.office_id) : null;
-    toast('Uploaded. ' + (off ? off.name : 'Your counselor') + ' can see it. Tap "I have done my part" when you are ready.');
+    toast('Uploaded. ' + (off ? off.name : 'Your counselor') + ' can see it. Tap "Mark my part complete" when you are ready.');
     ui.open[taskId] = true; drawRole();
   }
 }
@@ -683,10 +686,10 @@ function tapTask(id) { ui.open[id] = !ui.open[id]; drawTaskList(); }
 async function markMine(taskId) {
   const t = TK(taskId);
   const ok = await ups('task_progress', { member_id: me.id, task_id: taskId, status: 'submitted', signed_by: null, signed_name: null, updated_at: new Date().toISOString() }, ['member_id', 'task_id']);
-  if (ok) { toast('Marked. ' + ((t.office_id && O(t.office_id)) ? O(t.office_id).name : 'Your counselor') + ' will confirm and sign it off.'); drawMember(); }
+  if (ok) { toast('Recorded. ' + ((t.office_id && O(t.office_id)) ? O(t.office_id).name : 'Your counselor') + ' will confirm and sign it off.'); drawMember(); }
 }
 async function undoMine(taskId) {
-  if (await del('task_progress', { member_id: me.id, task_id: taskId, status: 'submitted' })) { toast('Undone.'); drawMember(); }
+  if (await del('task_progress', { member_id: me.id, task_id: taskId, status: 'submitted' })) { toast('Completion withdrawn.'); drawMember(); }
 }
 // ---------------------------------------------------------------------
 // Appointments. Every office takes bookings on a weekly schedule, by
@@ -737,14 +740,14 @@ function bookPicker(t, off) {
 }
 function bookErr(e) {
   const m = String(e && e.message || e);
-  if (/duplicate|unique/i.test(m)) return 'Someone just took that time. Pick another one.';
+  if (/duplicate|unique/i.test(m)) return 'That time is no longer available. Please select another time.';
   if (/row-level security|permission/i.test(m)) return 'Booking is not switched on yet. Your admin needs to run supabase/appointments.sql (SETUP.md step 2c).';
   return 'Could not book. ' + m;
 }
 async function bookTime(taskId) {
   const t = TK(taskId), off = O(t.office_id), day = val('bk-day'), time = val('bk-time');
   if (!day || !time) return;
-  if (!freeTimes(off, day).includes(time)) { toast('Someone just took that time. Pick another one.', 'err'); drawTaskList(); return; }
+  if (!freeTimes(off, day).includes(time)) { toast('That time is no longer available. Please select another time.', 'err'); drawTaskList(); return; }
   if (navigator.onLine === false) { toast('Connect to the internet to book an appointment.', 'err'); return; }
   busy('bk-go', true, 'Sending');
   const slot = { id: DB.newId(), office_id: off.id, slot_day: day, slot_time: time, member_id: me.id, blocked: false };
@@ -790,7 +793,7 @@ function drawInbox() {
   }
   comp.style.display = 'none';
   const list = notes.filter(n => ui.inbox === 'all' || n.kind === 'reminder' || n.kind === 'overdue');
-  if (!list.length) { box.innerHTML = emp('ti-inbox', 'Nothing here'); return; }
+  if (!list.length) { box.innerHTML = emp('ti-inbox', 'No items to display.'); return; }
   box.innerHTML = (unread ? `<div class="linkrow"><span class="ts" style="margin:0">${unread} unread</span><button class="lbtn" onclick="readAll()">Mark all read</button></div>` : '') +
     list.map(n => {
       const st = NOTE_STYLE[n.kind] || NOTE_STYLE.system;
@@ -811,7 +814,7 @@ async function readAll() {
 // Member <-> sponsor messages
 function threadHTML(memberId) {
   const msgs = S.messages.filter(m => m.member_id === memberId).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
-  if (!msgs.length) return emp('ti-message', 'No messages yet. Say hello.');
+  if (!msgs.length) return emp('ti-message', 'No messages yet.');
   return msgs.map(m => {
     const mine = m.sender_id === me.id, who = mine ? 'You' : ((P(m.sender_id) || {}).name || '');
     return `<div class="mw${mine ? ' mine' : ''}"><div class="msg ${mine ? 'me' : 'them'}">${esc(m.body)}</div><div class="msgt">${esc(who)} · ${esc(when(m.created_at))}</div></div>`;
@@ -841,7 +844,7 @@ function drawDocs() {
   const carry = tasksFor(p, 'out').filter(t => t.carry).map(t => ['task-' + t.id, t.name, 'Hand carry to ' + baseName(p.gaining_base)]);
   const row = x => `<div class="rule"><div style="flex:1"><div class="rt">${esc(x[1])}</div><div class="ts">${esc(x[2])}</div></div>${toggle(`onchange="flipDoc('${esc(x[0])}',this.checked)"`, d[x[0]], x[1])}</div>`;
   const files = myFilesFor(p.id);
-  const filesCard = `<div class="card"><div class="tn">Your uploaded files</div><div class="ts" style="margin-bottom:6px">Only you and the offices that sign you off can open these. Upload files from inside a task.</div>${files.length ? files.map(f => { const t = TK(f.task_id); return fileLine(Object.assign({}, f, { name: f.name + (t ? ' · ' + t.name : '') }), 'openUpload'); }).join('') : '<div class="ts">Nothing uploaded yet.</div>'}</div>`;
+  const filesCard = `<div class="card"><div class="tn">Your uploaded files</div><div class="ts" style="margin-bottom:6px">Only you and the offices that sign you off can open these. Upload files from inside a task.</div>${files.length ? files.map(f => { const t = TK(f.task_id); return fileLine(Object.assign({}, f, { name: f.name + (t ? ' · ' + t.name : '') }), 'openUpload'); }).join('') : '<div class="ts">No files have been uploaded.</div>'}</div>`;
   const forms = S.task_files.filter(f => { const t = TK(f.task_id); return t && (t.base_id === p.base_id || t.base_id === inBase(p)) && (!t.tag || (p.flags || {})[t.tag]); });
   const formsCard = forms.length ? `<div class="card"><div class="tn">Forms you can open</div><div class="ts" style="margin-bottom:6px">Blank forms your offices attached to tasks.</div>${forms.map(f => fileLine(Object.assign({}, f, { name: f.name + ' · ' + (TK(f.task_id) || {}).name }), 'openForm')).join('')}</div>` : '';
   el('mdocs').innerHTML = formsCard + filesCard + `<div class="card"><div class="tn">Have these ready</div><div class="ts" style="margin-bottom:6px">Tick each one off as you get it.</div>${base.map(row).join('')}</div>` +
@@ -883,7 +886,7 @@ function tipLabel(tier) {
 }
 async function addTip(cid, tier) {
   const f = 'tf' + cid, title = val(f + '-t').trim();
-  if (!title) { toast('Give the tip a title.', 'err'); return; }
+  if (!title) { toast('Enter a title for the tip.', 'err'); return; }
   const row = { base_id: tier === 'global' ? null : me.base_id, tier, label: tipLabel(tier), title, body: val(f + '-b').trim(), applies: val(f + '-y') || 'both', author_id: me.id };
   if (!(await ins('tips', row))) return;
   ui.formOpen['tip-' + cid] = false;
@@ -902,7 +905,7 @@ function drawProfileTab() {
   h += `<div class="card"><div class="dlbl">Your move</div><div class="ts" style="margin:0 0 10px">Change these if your orders change. Due dates update straight away.</div>${moveEditor('mp', p)}<button class="pbtn bblue" onclick="saveMove()">Save move details</button></div>`;
   if (p.dir !== 'none') h += `<div class="card"><div class="dlbl">What applies to you</div><div class="ts" style="margin-bottom:8px">These control which tasks show on your checklist.</div>${flagToggles('mp', p.flags)}</div>`;
   h += roleRequestCard();
-  h += shareButton('Know someone else PCSing? Share PCS Path');
+  h += shareButton('Share PCS Path with other members');
   h += `<button class="ibtn" style="width:100%" onclick="switchRole()">${me.roles.length > 1 ? 'Switch role' : 'Sign out'}</button>`;
   el('mprofile').innerHTML = h;
 }
@@ -928,7 +931,7 @@ async function requestRole() {
   const r = val('rq-role'), why = val('rq-why').trim();
   if (!why) { toast('Add a short reason for your MPF.', 'err'); return; }
   const row = { user_id: me.id, name: me.name, base_id: me.base_id, current_roles: me.roles.map(x => ROLE_META[x].n).join(', '), wanted_role: r, reason: why, status: 'pending' };
-  if (await ins('role_requests', row)) { toast('Request sent to ' + (r === 'mpf' ? 'a global admin' : 'your MPF') + '.'); drawRole(); }
+  if (await ins('role_requests', row)) { toast('Request submitted to ' + (r === 'mpf' ? 'a global admin' : 'your MPF') + ' for approval.'); drawRole(); }
 }
 
 // Automatic reminders, sent in the app when a member opens it.
@@ -982,10 +985,17 @@ function drawSponsor() {
   el('smem').innerHTML = picker + `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">Inbound from ${esc(baseName(m.base_id))}</div></div>${hand}</div><div class="dmeta" style="margin-top:11px;margin-bottom:0">${rows}</div></div>` +
     `<div class="card"><div class="tn">Their out-processing progress</div><div class="ts">You see the shape of it, not their documents.</div><div class="frow"><div style="flex:1"><div class="rt">${so.done} of ${so.total} complete</div><div class="ts">${so.over ? so.over + ' overdue at ' + esc(baseName(m.base_id)) : 'Nothing overdue'}</div></div>${so.over ? pill('pa', 'Behind') : pill('pn', 'On track')}</div><div class="frow" style="padding-bottom:0"><div style="flex:1"><div class="rt">Arrival readiness</div><div class="ts">${pd} of ${prepItems.length} prep items done</div></div>${prepItems.length && pd === prepItems.length ? pill('pn', 'Ready') : pill('pa', 'In progress')}</div></div>`;
   let ph = prepItems.map(x => `<div class="card${x.done ? ' dim' : ''}"><div class="row"><button class="chk${x.done ? ' ck' : ''}" aria-pressed="${x.done}" aria-label="${x.done ? 'Mark not done' : 'Mark done'}: ${esc(x.title)}" onclick="togglePrep('${x.id}')">${x.done ? '<i class="ti ti-check"></i>' : ''}</button><div style="flex:1"><div class="tn">${esc(x.title)}</div><div class="ts">${esc(x.body || '')}</div></div><button class="ibtn" aria-label="Remove ${esc(x.title)}" onclick="delPrep('${x.id}')"><i class="ti ti-x" aria-hidden="true"></i></button></div></div>`).join('');
-  if (!prepItems.length) ph += emp('ti-list-check', 'Nothing on the list yet.');
+  if (!prepItems.length) ph += emp('ti-list-check', 'No preparation items have been added.');
+  const recMissing = (window.PCS_SEED.sponsorPrep || []).filter(r => !prepItems.some(x => x.title === r[0]));
+  if (recMissing.length) ph += `<button class="ibtn" style="width:100%" onclick="addRecommendedPrep()"><i class="ti ti-list-check" aria-hidden="true"></i> Add recommended items (${recMissing.length})</button>`;
   ph += ui.formOpen.prep ? `<div class="af"><h4>New prep item</h4><label class="fl" for="pp-t">What needs doing</label><input class="fi" id="pp-t" placeholder="Book airport pickup"><label class="fl" for="pp-b">Detail</label><input class="fi" id="pp-b" placeholder="Optional"><div class="brow"><button class="pbtn bspon" onclick="addPrep()">Add to list</button><button class="ibtn" onclick="toggleForm('prep')">Cancel</button></div></div>` : `<button class="pbtn bspon" onclick="toggleForm('prep')">Add prep item</button>`;
   el('sprep').innerHTML = ph;
   el('smsgs').innerHTML = threadHTML(m.id);
+}
+async function addRecommendedPrep() {
+  const have = S.sponsor_prep.filter(x => x.member_id === ui.spm).map(x => x.title);
+  const rows = window.PCS_SEED.sponsorPrep.filter(r => !have.includes(r[0])).map(r => ({ member_id: ui.spm, title: r[0], body: r[1], done: false }));
+  if (rows.length && await ins('sponsor_prep', rows)) { toast(rows.length + ' recommended items added.'); drawSponsor(); }
 }
 async function togglePrep(id) { const x = S.sponsor_prep.find(i => i.id === id); if (await upd('sponsor_prep', { id }, { done: !x.done })) { toast(!x.done ? 'Marked not done.' : 'Marked done.'); drawSponsor(); } }
 async function delPrep(id) { if (await del('sponsor_prep', { id })) drawSponsor(); }
@@ -1019,7 +1029,7 @@ function drawQueue(cid) {
   const off = myOffice(), box = el(cid);
   if (!off) { box.innerHTML = noOffice(); return; }
   const q = queueFor(off.id);
-  if (!q.length) { box.innerHTML = emp('ti-circle-check', 'Nobody is waiting on ' + off.name + '.'); return; }
+  if (!q.length) { box.innerHTML = emp('ti-circle-check', 'No members are awaiting action from ' + off.name + '.'); return; }
   box.innerHTML = q.map(({ m, items }) => `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">${m.dir === 'in' || m.handoff === 'complete' ? 'RNLTD ' + esc(fmt(m.rnltd)) : 'Departs ' + esc(fmt(m.depart))}</div></div></div>` +
     items.map(i => `<div class="frow"><div style="flex:1"><div style="font-size:12.5px;font-weight:600">${esc(i.t.name)}</div><div class="ts">${i.s === 'submitted' ? 'Member says their part is done' : i.due ? 'Due ' + esc(fmt(i.due)) : ''}</div>${uploadsChips(m.id, i.t.id)}</div>${i.s === 'submitted' ? pill('pa', 'Ready') : i.s === 'overdue' ? pill('pr', 'Overdue') : ''}</div><div class="brow" style="justify-content:flex-end;padding-bottom:4px"><button class="ibtn" onclick="signOff('${m.id}','${i.t.id}','na')">Not needed</button><button class="sbtn" onclick="signOff('${m.id}','${i.t.id}','done')">Sign off</button></div>`).join('') + '</div>').join('');
 }
@@ -1065,7 +1075,7 @@ function drawAppts(cid, badgeId) {
   if (asks.length) {
     h += '<div class="dlbl" style="margin-top:6px">Waiting for you to confirm</div>' + asks.map(a => {
       const s = slotOf(a), off = O(a.office_id) || {}, unstaffed = !own && O(a.office_id) && !staffedOffice(O(a.office_id));
-      return `<div class="card">${who(a, '')}<div class="dmeta" style="margin:10px 0"><div class="dmr"><i class="ti ti-calendar-event" aria-hidden="true"></i><span><b>${esc(slotLabel(s))}</b>${s.slot_day === today() ? ' (today)' : ''}</span></div></div>${unstaffed ? `<div class="ts" style="margin:-4px 0 8px;color:#7A4809">Nobody is linked to ${esc(off.name)} yet, so this one is yours.</div>` : ''}${canManageOffice(a.office_id) ? `<div class="brow"><button class="sbtn" style="flex:1" onclick="answerAppt('${a.id}',true)">Confirm</button><button class="ibtn dg" onclick="answerAppt('${a.id}',false)">Reject</button></div>` : `<div class="ts">${esc(off.name || 'The office')} confirms this.</div>`}</div>`;
+      return `<div class="card">${who(a, '')}<div class="dmeta" style="margin:10px 0"><div class="dmr"><i class="ti ti-calendar-event" aria-hidden="true"></i><span><b>${esc(slotLabel(s))}</b>${s.slot_day === today() ? ' (today)' : ''}</span></div></div>${unstaffed ? `<div class="ts" style="margin:-4px 0 8px;color:#7A4809">No staff member is assigned to ${esc(off.name)}. This request requires action by the MPF.</div>` : ''}${canManageOffice(a.office_id) ? `<div class="brow"><button class="sbtn" style="flex:1" onclick="answerAppt('${a.id}',true)">Confirm</button><button class="ibtn dg" onclick="answerAppt('${a.id}',false)">Reject</button></div>` : `<div class="ts">${esc(off.name || 'The office')} confirms this.</div>`}</div>`;
     }).join('');
   }
   if (reqs.length) {
@@ -1076,12 +1086,12 @@ function drawAppts(cid, badgeId) {
       return `<div class="card">${who(a, ' · asked ' + esc(when(a.created_at)))}${act}</div>`;
     }).join('');
   }
-  if (!asks.length && !reqs.length) h += emp('ti-circle-check', 'No requests waiting.');
+  if (!asks.length && !reqs.length) h += emp('ti-circle-check', 'No requests are awaiting action.');
   h += '<div class="dlbl" style="margin-top:6px">Confirmed appointments</div>';
   h += booked.length ? '<div class="card">' + booked.slice(0, 60).map((x, i) => {
     const m = P(x.a.member_id) || { name: 'Member' }, t = TK(x.a.task_id), off = O(x.a.office_id) || { name: '' };
     return `<div class="frow"${i === 0 ? ' style="border-top:none;padding-top:0"' : ''}>${avatar(m)}<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">${esc(m.name)}</div><div class="ts">${esc(slotLabel(x.s))}${x.s.slot_day === today() ? ' (today)' : ''} · ${esc(t ? t.name : '')}${own ? '' : ' · ' + esc(off.name)}</div>${uploadsChips(x.a.member_id, x.a.task_id)}</div>${canManageOffice(x.a.office_id) ? `<button class="ibtn dg" onclick="officeCancel('${x.a.id}')">Cancel</button>` : ''}</div>`;
-  }).join('') + '</div>' : emp('ti-calendar', 'Nothing confirmed yet.');
+  }).join('') + '</div>' : emp('ti-calendar', 'No appointments have been confirmed.');
   box.innerHTML = h;
 }
 async function answerAppt(id, yes) {
@@ -1220,7 +1230,7 @@ function drawCounsel() {
   el('cn-name').textContent = 'Counselor · ' + me.name;
   el('cn-sub').textContent = baseName(me.base_id) + ' out-processing caseload';
   const list = caseload();
-  el('clist').innerHTML = list.length ? list.map(m => { const s = stats(m, 'out'), r = RISK[risk(m)]; return `<button class="rolecard" onclick="openCase('${m.id}')">${avatar(m)}<span style="flex:1"><span class="tn" style="display:block">${esc(m.name)}</span><span class="ts" style="display:block">Departs ${esc(fmt(m.depart))} · ${s.pct}% complete${s.over ? ' · ' + s.over + ' overdue' : ''}${s.sub ? ' · ' + s.sub + ' to confirm' : ''}</span></span>${pill(r[0], r[1])}</button>`; }).join('') : emp('ti-users', 'Nobody is out-processing at ' + baseName(me.base_id) + ' right now.');
+  el('clist').innerHTML = list.length ? list.map(m => { const s = stats(m, 'out'), r = RISK[risk(m)]; return `<button class="rolecard" onclick="openCase('${m.id}')">${avatar(m)}<span style="flex:1"><span class="tn" style="display:block">${esc(m.name)}</span><span class="ts" style="display:block">Departs ${esc(fmt(m.depart))} · ${s.pct}% complete${s.over ? ' · ' + s.over + ' overdue' : ''}${s.sub ? ' · ' + s.sub + ' to confirm' : ''}</span></span>${pill(r[0], r[1])}</button>`; }).join('') : emp('ti-users', 'No members are currently out-processing at ' + baseName(me.base_id) + ' right now.');
   if (!list.find(m => m.id === ui.cso)) ui.cso = list[0] ? list[0].id : null;
   const m = ui.cso ? P(ui.cso) : null;
   if (!m) { el('cso').innerHTML = emp('ti-clipboard-check', 'No members to sign off.'); }
@@ -1301,6 +1311,8 @@ function drawMaster() {
   const list = all.filter(t => t.dir === ui.mdir).sort((a, b) => (ui.mdir === 'out' ? b.offset_days - a.offset_days : a.offset_days - b.offset_days) || (a.sort - b.sort));
   let h = '';
   if (!all.length) h += `<div class="card soft"><div class="tn">Start from a ready-made checklist</div><div class="ts" style="margin-bottom:10px;line-height:1.55">Loads about 55 out-processing and 9 in-processing tasks, 8 offices, reminder rules and starter tips, based on the RAF Mildenhall checklist. Edit the details for ${esc(baseName(base))} afterwards.</div><button class="pbtn bgreen" id="st-go" onclick="loadStarter()">Load starter checklist</button></div>`;
+  const rec = all.length ? recommendedMissing() : [];
+  if (rec.length) h += `<div class="card soft"><div class="tn">${rec.length} recommended task${rec.length > 1 ? 's' : ''} available</div><div class="ts" style="margin-bottom:10px;line-height:1.55">Standard tasks added to PCS Path since this checklist was loaded: ${esc(rec.map(t => t.name).join('; '))}.</div><button class="pbtn bgreen" onclick="addRecommendedTasks()">Add recommended tasks</button></div>`;
   h += list.map(t => {
     if (ui.edit === t.id) return taskForm(t);
     const off = t.office_id ? O(t.office_id) : null;
@@ -1336,7 +1348,7 @@ ${ui.mdir === 'out' ? `<label class="cbx"><input type="checkbox" id="tf-th"${x.t
 }
 async function saveTask(id) {
   const name = val('tf-n').trim(), off = parseInt(val('tf-off'), 10);
-  if (!name) { toast('Give the task a name.', 'err'); return; }
+  if (!name) { toast('Enter a task name.', 'err'); return; }
   if (isNaN(off) || off < 0 || off > 365) { toast('Due days must be between 0 and 365.', 'err'); return; }
   const row = { name, descr: val('tf-d').trim() || 'No description added yet.', office_name: val('tf-o').trim() || null, office_id: val('tf-oid') || null, loc: val('tf-loc').trim() || null, hours: val('tf-h').trim() || null, phone: val('tf-p').trim() || null, offset_days: off, tag: val('tf-tag') || null, carry: checked('tf-carry'), triggers_handoff: ui.mdir === 'out' && checked('tf-th') };
   let ok;
@@ -1348,6 +1360,18 @@ async function delMaster(id) {
   const t = TK(id);
   if (!window.confirm('Remove "' + t.name + '" from the master list? It disappears from every member checklist, along with its sign-offs.')) return;
   if (await del('tasks', { id })) { toast('Task removed from the master list.'); drawMaster(); }
+}
+function recommendedMissing() {
+  const base = me.base_id, b = B(base), names = new Set(S.tasks.filter(t => t.base_id === base).map(t => t.name.toLowerCase()));
+  const existing = {}; S.offices.filter(o => o.base_id === base).forEach(o => { existing[o.name] = o.id; });
+  const st = window.PCS_SEED.starter(base, { country: b && b.country, existingOffices: existing, author: me.id });
+  const ok = new Set(S.offices.filter(o => o.base_id === base).map(o => o.id));
+  return st.tasks.filter(t => !names.has(t.name.toLowerCase())).map(t => Object.assign(t, { office_id: ok.has(t.office_id) ? t.office_id : null }));
+}
+async function addRecommendedTasks() {
+  const rows = recommendedMissing();
+  if (!rows.length) return;
+  if (await ins('tasks', rows)) { toast(rows.length + ' recommended tasks added. Review them for local accuracy.'); drawMaster(); }
 }
 async function loadStarter() {
   const base = me.base_id, b = B(base);
@@ -1368,12 +1392,12 @@ function drawRules() {
 async function toggleRule(id, v) { const r = S.reminder_rules.find(x => x.id === id); if (await upd('reminder_rules', { id }, { enabled: v })) toast(r.title + (v ? ' is on.' : ' is off.')); }
 function drawInbound() {
   const list = members().filter(m => m.gaining_base === me.base_id && m.dir !== 'in').sort((a, b) => String(a.rnltd).localeCompare(String(b.rnltd)));
-  if (!list.length) { el('binbound').innerHTML = emp('ti-plane-arrival', 'Nobody is inbound to ' + baseName(me.base_id) + ' yet.'); return; }
+  if (!list.length) { el('binbound').innerHTML = emp('ti-plane-arrival', 'No members are currently inbound to ' + baseName(me.base_id) + ' yet.'); return; }
   el('binbound').innerHTML = list.map(m => {
     const arrived = m.rnltd && m.rnltd <= today();
     const st = arrived ? pill('pn', 'Arrived') : m.handoff === 'complete' ? pill('pp', 'En route') : pill('pa', 'Out-processing');
     const sp = m.sponsor_id ? P(m.sponsor_id) : null, si = stats(m, 'in');
-    const spHtml = sp ? dmr('ti-friends', 'Sponsor ' + sp.name) : `<div class="ts" style="margin-top:8px;color:#7A4809">No sponsor yet. The squadron CSS assigns one.</div>`;
+    const spHtml = sp ? dmr('ti-friends', 'Sponsor ' + sp.name) : `<div class="ts" style="margin-top:8px;color:#7A4809">No sponsor assigned. The squadron CSS assigns sponsors.</div>`;
     return `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">From ${esc(baseName(m.base_id))} · RNLTD ${esc(fmt(m.rnltd))}</div></div>${st}</div><div class="ts" style="margin-top:8px">${m.handoff === 'complete' ? 'In-processing ' + si.pct + '% complete' : 'Record arrives when ' + esc(baseName(m.base_id)) + ' signs their final out'}</div>${spHtml}</div>`;
   }).join('');
 }
@@ -1396,11 +1420,11 @@ function cssPool() {
 function cssFilterBar() {
   if (!me.unit) return '';
   const mine = ui.cssMine !== false;
-  return `<div class="mtog" style="margin:0"><button class="mtb${mine ? ' on' : ''}" aria-pressed="${mine}" onclick="ui.cssMine=true;drawCss()">${esc(me.unit)}</button><button class="mtb${mine ? '' : ' on'}" aria-pressed="${!mine}" onclick="ui.cssMine=false;drawCss()">Everyone at ${esc(baseName(me.base_id))}</button></div>`;
+  return `<div class="mtog" style="margin:0"><button class="mtb${mine ? ' on' : ''}" aria-pressed="${mine}" onclick="ui.cssMine=true;drawCss()">${esc(me.unit)}</button><button class="mtb${mine ? '' : ' on'}" aria-pressed="${!mine}" onclick="ui.cssMine=false;drawCss()">All personnel at ${esc(baseName(me.base_id))}</button></div>`;
 }
 function sponsorSelect(m) {
   const list = sponsorCandidates(m), cur = m.sponsor_id;
-  if (!list.length) return `<div class="ts" style="margin-top:8px">Nobody is a sponsor yet. Turn someone on in the Sponsors tab.</div>`;
+  if (!list.length) return `<div class="ts" style="margin-top:8px">No sponsors have been designated. Designate sponsors in the Sponsors tab.</div>`;
   return `<div class="brow" style="margin-top:10px"><label class="sr" for="sa-${m.id}">Sponsor for ${esc(m.name)}</label><select class="fs" id="sa-${m.id}" style="flex:1;margin:0">${list.map(s => opt(s.id, s.name + (s.unit ? ' · ' + s.unit : ''), s.id === cur)).join('')}</select><button class="sbtn" onclick="assignSponsor('${m.id}')">${cur ? 'Change' : 'Assign'}</button></div>`;
 }
 function cssMemberCard(m) {
@@ -1414,12 +1438,12 @@ function drawCss() {
   el('cs-sub').textContent = me.name;
   const pool = cssPool(), need = pool.filter(m => !m.sponsor_id), have = pool.filter(m => m.sponsor_id);
   setBadge('xbadge', need.length);
-  el('xneed').innerHTML = cssFilterBar() + (need.length ? `<div class="ts" style="margin:0">Pick a sponsor for each member. Both get a notification and can message each other in the app.</div>` + need.map(cssMemberCard).join('') : emp('ti-circle-check', 'Everyone has a sponsor.'));
+  el('xneed').innerHTML = cssFilterBar() + (need.length ? `<div class="ts" style="margin:0">Assign a sponsor to each member. Both parties are notified and may communicate through PCS Path.</div>` + need.map(cssMemberCard).join('') : emp('ti-circle-check', 'All members have an assigned sponsor.'));
   el('xall').innerHTML = cssFilterBar() + (have.length ? have.map(cssMemberCard).join('') : emp('ti-friends', 'No sponsors assigned yet.'));
   const people = S.profiles.filter(p => p.base_id === me.base_id && p.status === 'active' && p.id !== me.id).sort((a, b) => (b.roles.includes('sponsor') - a.roles.includes('sponsor')) || sortByName(a, b));
   const load = id => S.profiles.filter(m => m.sponsor_id === id).length;
   el('xpeople').innerHTML = `<div class="ts" style="margin:0;line-height:1.5">Switch on anyone who can sponsor. Only people switched on here appear when you assign sponsors.</div><div class="card">` +
-    (people.length ? people.map(p => `<div class="rule"><div style="flex:1;min-width:0"><div class="rt">${esc(p.name)}</div><div class="ts">${esc(p.unit || '')}${p.roles.includes('sponsor') ? ' · sponsoring ' + load(p.id) : ''}</div></div>${toggle(`onchange="setSponsorRole('${p.id}',this.checked)"`, p.roles.includes('sponsor'), 'Sponsor: ' + p.name)}</div>`).join('') : '<div class="ts">Nobody else at this base yet.</div>') + '</div>';
+    (people.length ? people.map(p => `<div class="rule"><div style="flex:1;min-width:0"><div class="rt">${esc(p.name)}</div><div class="ts">${esc(p.unit || '')}${p.roles.includes('sponsor') ? ' · sponsoring ' + load(p.id) : ''}</div></div>${toggle(`onchange="setSponsorRole('${p.id}',this.checked)"`, p.roles.includes('sponsor'), 'Sponsor: ' + p.name)}</div>`).join('') : '<div class="ts">No other personnel are registered at this base.</div>') + '</div>';
 }
 async function removeSponsor(memberId) {
   const m = P(memberId);
@@ -1498,7 +1522,7 @@ async function saveRoles(id) {
   const spEl = el('re-sp'), newSp = spEl ? (spEl.value || null) : p.sponsor_id;
   const spChanged = spEl && newSp !== (p.sponsor_id || null);
   if (spChanged) patch.sponsor_id = newSp;
-  if ((roles.includes('worker') || roles.includes('lead')) && !office) toast('Tip: workers and leads need an office to see a queue.');
+  if ((roles.includes('worker') || roles.includes('lead')) && !office) toast('Note: office workers and leads require an assigned office to view a sign-off queue.');
   if (!(await upd('profiles', { id }, patch))) return;
   if (spChanged && newSp) await notifySponsorPair(p, P(newSp));
   ui.roleEdit = null; toast(spChanged && newSp ? 'Saved. Sponsor assigned and both of them notified.' : 'Saved.'); drawUsers();
@@ -1506,8 +1530,8 @@ async function saveRoles(id) {
 async function notifySponsorPair(m, s) {
   const where = baseName(m.gaining_base || m.base_id);
   await notifyMany([
-    { user_id: m.id, kind: 'system', title: 'Meet your sponsor, ' + s.name.split(',')[0], body: 'Your sponsor helps you get set up at ' + where + '. Say hello in Inbox, Sponsor.', dedupe_key: 'sponsor-' + s.id },
-    { user_id: s.id, kind: 'system', title: 'You are sponsoring ' + m.name, body: 'They report to ' + where + (m.rnltd ? ' by ' + fmt(m.rnltd) : '') + '. Your prep list and messages are under Sponsor.', dedupe_key: 'sponsoring-' + m.id }
+    { user_id: m.id, kind: 'system', title: 'Sponsor assigned: ' + s.name, body: 'Your sponsor will assist with your arrival at ' + where + '. You may contact your sponsor through Inbox, Sponsor.', dedupe_key: 'sponsor-' + s.id },
+    { user_id: s.id, kind: 'system', title: 'Sponsorship assignment: ' + m.name, body: 'They report to ' + where + (m.rnltd ? ' by ' + fmt(m.rnltd) : '') + '. First-time sponsors must complete eSAT sponsor training. Make initial contact within three duty days, or as directed by your unit.', dedupe_key: 'sponsoring-' + m.id }
   ]);
 }
 
@@ -1526,7 +1550,7 @@ function bottlenecks(list) {
   return Object.values(by).sort((a, b) => (b.m + b.o) - (a.m + a.o)).slice(0, 6);
 }
 function bottleneckHTML(rows) {
-  if (!rows.length) return emp('ti-mood-happy', 'Nothing overdue and nothing waiting on an office.');
+  if (!rows.length) return emp('ti-mood-happy', 'No overdue tasks and no tasks awaiting office action.');
   const mx = Math.max(...rows.map(o => o.m + o.o));
   return rows.map(o => `<div class="bnr"><div style="display:flex;justify-content:space-between;font-size:11.5px;margin-bottom:5px"><span>${esc(o.n)}</span><span style="color:var(--t3)">${o.m + o.o} task${o.m + o.o > 1 ? 's' : ''}</span></div><div class="bnt" role="img" aria-label="${o.m} overdue on the member side, ${o.o} waiting on the office"><div class="bbl" style="width:${Math.round(o.m / mx * 100)}%"></div><div class="bred" style="width:${Math.round(o.o / mx * 100)}%"></div></div></div>`).join('') +
     '<div style="font-size:11.5px;color:var(--t2)"><span style="color:#3B8DE0;font-weight:600">Blue</span> overdue, member has not done their part · <span style="color:#E24B4A;font-weight:600">Red</span> member done, waiting on the office</div>';
@@ -1541,13 +1565,13 @@ function drawCmd() {
   const attn = leaving.filter(m => risk(m) !== 'low').sort((a, b) => riskRank[risk(a)] - riskRank[risk(b)]);
   el('dout').innerHTML = `<div class="mg">${metric('Departing', leaving.length, '#1A5FA8', 'members')}${metric('Avg. completion', avg + '%', '#1D9E75', 'of their checklist')}${metric('Nothing overdue', leaving.length ? Math.round(clean / leaving.length * 100) + '%' : '–', !leaving.length || clean / leaving.length >= 0.8 ? '#1D9E75' : clean / leaving.length >= 0.5 ? '#B7791F' : '#A32D2D', clean + ' of ' + leaving.length + ' members')}${metric('Need attention', attn.length, attn.length ? '#A32D2D' : '#1D9E75', 'members')}</div>` +
     `<div class="slbl">Where tasks are stuck</div><div class="pad" style="padding-top:8px">${bottleneckHTML(bottlenecks(leaving))}</div>` +
-    `<div class="slbl">Members needing attention</div><div class="pad" style="padding-top:8px">${attn.length ? attn.map(m => { const s = stats(m, 'out'), r = RISK[risk(m)]; return memberRow(m, pill(r[0], r[1]), 'Departs ' + fmt(m.depart) + ' · ' + s.pct + '% · ' + s.over + ' overdue'); }).join('') : emp('ti-circle-check', 'Everyone is on track.')}</div>`;
+    `<div class="slbl">Members needing attention</div><div class="pad" style="padding-top:8px">${attn.length ? attn.map(m => { const s = stats(m, 'out'), r = RISK[risk(m)]; return memberRow(m, pill(r[0], r[1]), 'Departs ' + fmt(m.depart) + ' · ' + s.pct + '% · ' + s.over + ' overdue'); }).join('') : emp('ti-circle-check', 'All members are on track.')}</div>`;
   const inb = members().filter(m => m.gaining_base === me.base_id && m.dir !== 'in');
   const withSp = inb.filter(m => m.sponsor_id).length;
   const arrived = inb.filter(m => m.rnltd && m.rnltd <= today());
   const ia = inb.filter(m => !m.sponsor_id || (m.rnltd && m.rnltd <= today() && stats(m, 'in').pct < 25));
   el('din').innerHTML = `<div class="mg">${metric('Inbound', inb.length, '#554CBB', 'members')}${metric('Arrived', arrived.length, '#1A5FA8', 'past RNLTD')}${metric('With sponsor', withSp + ' of ' + inb.length, withSp === inb.length ? '#1D9E75' : '#7A4809', 'assigned')}${metric('Need attention', ia.length, ia.length ? '#A32D2D' : '#1D9E75', 'members')}</div>` +
-    `<div class="slbl">Inbound members</div><div class="pad" style="padding-top:8px">${inb.length ? inb.map(m => memberRow(m, ia.includes(m) ? pill('pa', !m.sponsor_id ? 'No sponsor' : 'Slow start') : pill('pn', 'On track'), 'From ' + baseName(m.base_id) + ' · RNLTD ' + fmt(m.rnltd) + (m.handoff === 'complete' ? ' · ' + stats(m, 'in').pct + '%' : ''))).join('') : emp('ti-plane-arrival', 'Nobody inbound yet.')}</div>`;
+    `<div class="slbl">Inbound members</div><div class="pad" style="padding-top:8px">${inb.length ? inb.map(m => memberRow(m, ia.includes(m) ? pill('pa', !m.sponsor_id ? 'No sponsor' : 'Slow start') : pill('pn', 'On track'), 'From ' + baseName(m.base_id) + ' · RNLTD ' + fmt(m.rnltd) + (m.handoff === 'complete' ? ' · ' + stats(m, 'in').pct + '%' : ''))).join('') : emp('ti-plane-arrival', 'No inbound members.')}</div>`;
   drawTipList('dtips', S.tips.filter(t => t.tier === 'cmd' && t.base_id === me.base_id), { tier: 'cmd', btn: 'bcoun', canRemove: true });
 }
 
@@ -1576,7 +1600,7 @@ function drawGlobal() {
 }
 async function toggleBase(id) { const b = B(id); if (await upd('bases', { id }, { live: !b.live })) { toast(b.name + (b.live ? ' is active. Members can sign up there.' : ' is off. New members cannot pick it.')); drawGlobal(); } }
 async function addBase() {
-  const name = val('nb-n').trim(); if (!name) { toast('Give the base a name.', 'err'); return; }
+  const name = val('nb-n').trim(); if (!name) { toast('Enter a base name.', 'err'); return; }
   let id = slug(name.replace(/\b(AB|AFB|RAF|JB|JBSA)\b/g, '')) || slug(name);
   if (B(id)) id = id + '-' + S.bases.length;
   if (await ins('bases', { id, name, country: val('nb-c').trim() || null, live: false })) { ui.formOpen.base = false; toast(name + ' added. Activate it once its MPF is ready.'); drawGlobal(); }
@@ -1592,7 +1616,7 @@ const FAQ = [
   ['I never got the confirmation email', 'On the sign-in screen, enter your email and password and tap Sign in, then tap "Resend confirmation email". Check spam. Some .mil inboxes block it, so send a message below if it still does not arrive.'],
   ['My dates or gaining base changed', 'Open Profile, change Your move and tap Save. Your due dates update straight away.'],
   ['A task is wrong or missing', 'Your base MPF looks after the checklist. Send a message below with the task name and what is wrong.'],
-  ['How do appointments work?', 'Open a task, tap Book a time, pick a day and time, then tap Request this time. The office confirms or rejects it and you get a notification either way.'],
+  ['How do appointments work?', 'Open a task, select Request appointment, choose a day and time, then select Request this time. The office confirms or rejects it and you get a notification either way.'],
   ['Who assigns my sponsor?', 'Your squadron CSS. If you still have no sponsor a few weeks before you report, send a message below.']
 ];
 let helpBack = 's-login';
@@ -1606,10 +1630,10 @@ function closeHelp() { show(helpBack || (me ? SCREENS[role] || 's-roles' : 's-lo
 function drawHelp() {
   const email = me ? me.email : val('lg-email').trim();
   const mine = me && S ? S.support_tickets.filter(t => t.user_id === me.id).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at))) : [];
-  let h = `<div class="card"><div class="dlbl">Quick answers</div>${FAQ.map(f => `<details class="faq"><summary>${esc(f[0])}</summary><p>${esc(f[1])}</p></details>`).join('')}</div>`;
-  h += `<div class="card"><div class="tn" style="margin-bottom:10px">Send us a message</div>
+  let h = guideChips() + `<div class="card"><div class="dlbl">Frequently asked questions</div>${FAQ.map(f => `<details class="faq"><summary>${esc(f[0])}</summary><p>${esc(f[1])}</p></details>`).join('')}</div>`;
+  h += `<div class="card"><div class="tn" style="margin-bottom:10px">Submit a request</div>
 <label class="fl" for="hp-kind">What is it about?</label><select class="fs" id="hp-kind">${HELP_KINDS.map(k => opt(k[0], k[1], k[0] === ui.helpKind)).join('')}</select>
-<label class="fl" for="hp-msg">Tell us what happened</label><textarea class="fi" id="hp-msg" placeholder="What were you trying to do, and what went wrong? Which screen or task?"></textarea>
+<label class="fl" for="hp-msg">Description</label><textarea class="fi" id="hp-msg" placeholder="What were you trying to do, and what went wrong? Which screen or task?"></textarea>
 ${me ? '' : `<label class="fl" for="hp-name">Your rank and name</label><input class="fi" id="hp-name" placeholder="SSgt Carter, James" autocomplete="name">`}
 <label class="fl" for="hp-email">Email for our reply</label><input class="fi" id="hp-email" type="email" value="${esc(email)}" placeholder="first.last@us.af.mil" autocomplete="email">
 ${me ? `<div class="brow" style="margin-bottom:11px"><button class="ibtn" onclick="this.nextElementSibling.click()"><i class="ti ti-photo" aria-hidden="true"></i> Add a screenshot</button><input type="file" accept="image/*,.pdf" hidden onchange="pickHelpFile(this)"><span class="ts" id="hp-file" style="margin:0;flex:1">${ui.helpFile ? esc(ui.helpFile.name) : 'Optional'}</span></div>` : ''}
@@ -1627,7 +1651,7 @@ function pickHelpFile(input) {
 }
 async function submitHelp() {
   const kind = val('hp-kind'), message = val('hp-msg').trim(), email = val('hp-email').trim().toLowerCase();
-  if (message.length < 5) { toast('Tell us a little more so we can help.', 'err'); return; }
+  if (message.length < 5) { toast('Please provide additional detail.', 'err'); return; }
   if (!/^\S+@\S+\.\S+$/.test(email)) { toast('Add an email so we can reply.', 'err'); return; }
   if (navigator.onLine === false) { toast('Connect to the internet to send this.', 'err'); return; }
   busy('hp-go', true, 'Sending');
@@ -1650,7 +1674,7 @@ async function submitHelp() {
   // Live: the database tells the global admins (update-4.sql). The demo does it here.
   if (DB.mode === 'demo' && S) await notifyMany(S.profiles.filter(p => p.roles.includes('global')).map(p => ({ user_id: p.id, kind: 'system', title: 'New help request: ' + (HELP_LABEL[kind] || kind), body: message.slice(0, 160) })));
   ui.helpFile = null;
-  toast('Sent. You will get a reply by email' + (me ? ' and in the app.' : '.'));
+  toast('Request submitted. You will receive a response by email' + (me ? ' and in PCS Path.' : '.'));
   drawHelp();
 }
 
@@ -1661,7 +1685,7 @@ function drawSupport() {
   setBadge('gsbadge', all.filter(t => t.status === 'new').length);
   const list = all.filter(t => f === 'active' ? t.status !== 'resolved' : t.status === 'resolved');
   let h = `<div class="mtog" style="margin:0"><button class="mtb${f === 'active' ? ' on' : ''}" onclick="ui.supFilt='active';drawSupport()">Open (${counts.active})</button><button class="mtb${f === 'resolved' ? ' on' : ''}" onclick="ui.supFilt='resolved';drawSupport()">Resolved (${counts.resolved})</button></div>`;
-  if (!list.length) { el('gsupport').innerHTML = h + emp('ti-mood-happy', f === 'active' ? 'No open help requests.' : 'Nothing resolved yet.'); return; }
+  if (!list.length) { el('gsupport').innerHTML = h + emp('ti-mood-happy', f === 'active' ? 'No open requests.' : 'No resolved requests.'); return; }
   h += list.map(t => {
     const who = t.user_id ? P(t.user_id) : null;
     const mail = `mailto:${encodeURIComponent(t.email || '')}?subject=${encodeURIComponent('PCS Path: ' + (HELP_LABEL[t.kind] || 'your message'))}&body=${encodeURIComponent('Hi ' + ((who && who.name) || t.name || '') + ',\n\n')}`;
@@ -1711,6 +1735,141 @@ async function resendConfirm() {
   const email = val('lg-email').trim().toLowerCase();
   if (!email) { toast('Enter your email first.', 'err'); return; }
   try { await DB.resendConfirm(email); toast('Sent. Check your inbox and spam folder.'); el('lg-extra').innerHTML = ''; } catch (e) { toast(e.message, 'err'); }
+}
+
+// ---------------------------------------------------------------------
+// Role guides: what each role can and cannot do, and how
+// ---------------------------------------------------------------------
+const GENERAL_RULES = [
+  'PCS Path supplements, and does not replace, vMPF, your Military Personnel Flight and the governing instructions. Where they differ, official guidance takes precedence.',
+  'Do not enter Social Security numbers, DoD ID numbers, medical diagnoses or classified information anywhere in PCS Path, including messages and uploaded files.',
+  'Use PCS Path for official purposes only, and access only the records you need for your duties.',
+  'Report errors, missing information or suspected misuse through Help and feedback.'
+];
+const ROLE_GUIDE = {
+  member: {
+    purpose: 'Complete your out-processing and in-processing requirements and track their status in one place.',
+    can: ['View the checklist built from your base, move details and personal circumstances', 'Record that you have completed your part of a task', 'Request an appointment with the responsible office', 'Upload supporting documents to a task', 'Update your move details and circumstances in Profile', 'Message your assigned sponsor', 'Request an additional role, such as sponsor or office worker'],
+    cannot: ['Sign off your own tasks. The responsible office or your counselor verifies and signs off each task', 'Change your base, roles or sponsor', 'View other members’ records'],
+    how: [
+      ['Complete a task', 'Open the task and review the requirements, office location and hours. Complete the required action, then select "Mark my part complete". The responsible office verifies the action and signs off the task, and you are notified.'],
+      ['Request an appointment', 'Open the task and select "Request appointment". Choose a day and time, then select "Request this time". The time is held while the office reviews the request, and you are notified when it is confirmed or declined.'],
+      ['Update your move', 'If your orders change, open Profile, update Your move and select Save. Due dates recalculate automatically.'],
+      ['Begin promptly', 'Upon assignment notification, complete the vMPF Initial Assignment Briefing and, if you have dependents, the Family Member Travel Screening in MyVector. Both appear on your checklist.']
+    ]
+  },
+  sponsor: {
+    purpose: 'Prepare for, and assist with, the arrival of the member assigned to you.',
+    can: ['View your member’s arrival date, family circumstances and overall progress', 'Maintain a preparation list for the member’s arrival', 'Exchange messages with your member'],
+    cannot: ['View your member’s documents or individual task details', 'Sign off tasks', 'Assign yourself to a member. Your squadron CSS makes sponsor assignments'],
+    how: [
+      ['Before you begin', 'First-time sponsors, and sponsors not trained in the past year, complete the eSAT sponsor training on Military OneSource before starting sponsorship duties.'],
+      ['Make initial contact', 'Contact your member within three duty days of assignment, or sooner if your unit directs. Introduce yourself through Messages and confirm the member’s arrival plans.'],
+      ['Prepare for arrival', 'Use the Prep list to track lodging, transportation from the port of entry, local area information and introductions to the member’s supervisor. Select "Add recommended items" to start from the standard list.']
+    ]
+  },
+  worker: {
+    purpose: 'Verify and sign off the tasks your office is responsible for, and respond to appointment requests.',
+    can: ['View members with outstanding tasks for your office', 'Sign off a task, or mark it not required', 'Confirm or decline appointment requests for your office', 'Open documents members upload to your office’s tasks', 'Publish tips for members'],
+    cannot: ['Sign off tasks belonging to another office', 'Sign off your own tasks', 'Change office hours or details. Your office lead manages these', 'Edit the base master list'],
+    how: [
+      ['Sign off a task', 'Open Queue. Members who have marked their part complete appear first. Verify the requirement has been met, then select Sign off. The member is notified.'],
+      ['Respond to an appointment request', 'Open Appts. Review the requested time and select Confirm, or select Reject and provide a reason. The member is notified either way.']
+    ],
+    rules: ['Sign off a task only after verifying the requirement has been met.', 'Do not save members’ documents to personal devices.']
+  },
+  lead: {
+    purpose: 'Manage your office’s appointments, details and forms, in addition to office worker duties.',
+    can: ['Perform all office worker functions', 'Block or reopen appointment times, or an entire day', 'Set appointment days, hours and length', 'Update the office name, building, phone number and current status', 'Attach blank forms to your office’s tasks'],
+    cannot: ['Edit the base master list or task due dates', 'Assign roles to other personnel'],
+    how: [
+      ['Block time', 'Open Schedule. Select a time to block it, or select "Block whole day" for closures and training. Existing appointments are not affected.'],
+      ['Change appointment hours', 'Open Office, update Appointment hours and select Save hours. The default is Monday to Friday, 0800 to 1600, in 30-minute appointments.'],
+      ['Attach a form', 'Open Office, then Forms for your tasks. Attach blank forms only. Anyone with the link can open them.']
+    ]
+  },
+  counsel: {
+    purpose: 'Oversee the base out-processing caseload and sign off tasks not owned by a specific office.',
+    can: ['View members out-processing at your base and their risk status', 'Sign off any task for a member in your caseload', 'View appointment requests for all offices', 'Publish counselor tips'],
+    cannot: ['Answer appointment requests on behalf of an office', 'Change roles or edit the master list'],
+    how: [
+      ['Prioritize your caseload', 'Members open sorted by risk. High risk indicates several overdue tasks or an imminent departure with low completion.'],
+      ['Sign off a task', 'Select a member, open Sign off, verify the requirement has been met and select Sign off.']
+    ]
+  },
+  css: {
+    purpose: 'Serve as the squadron sponsorship monitor: designate sponsors and assign them to members.',
+    can: ['View members leaving or arriving at your base, filtered to your squadron', 'Assign, change or remove a member’s sponsor', 'Designate or remove the Sponsor role for personnel at your base'],
+    cannot: ['Grant any role other than Sponsor', 'View members’ tasks or documents', 'Sign off tasks'],
+    how: [
+      ['Designate sponsors', 'Open Sponsors and switch on each person approved to sponsor.'],
+      ['Assign a sponsor', 'Open Needs sponsor, select a sponsor for the member and select Assign. Both parties are notified. Assign sponsors promptly after assignment notification so contact is made before the member departs.'],
+      ['Select an appropriate sponsor', 'Where possible, select a sponsor of similar grade and family circumstances who will remain at the base through the member’s arrival.']
+    ]
+  },
+  cmd: {
+    purpose: 'Monitor your squadron’s out-processing and in-processing status.',
+    can: ['View squadron completion, overdue tasks and members requiring attention', 'View where tasks are delayed, by office', 'Publish commander tips'],
+    cannot: ['Sign off tasks', 'Change member records or roles'],
+    how: [
+      ['Identify members requiring attention', 'Out-proc lists members with overdue tasks or low completion near departure. Use this to direct follow-up through the chain of command.'],
+      ['Identify delays', '"Where tasks are stuck" separates delays on the member side (blue) from tasks awaiting office action (red).']
+    ]
+  },
+  mpf: {
+    purpose: 'Administer PCS Path for your base: profiles, the master checklist, roles and oversight.',
+    can: ['Approve or return new profiles', 'Add, edit and remove master list tasks, and attach forms', 'Enable or disable automatic reminders', 'Assign roles and offices, other than MPF and global admin', 'Respond to appointment requests for offices with no assigned staff'],
+    cannot: ['Grant MPF or global admin rights. A global admin approves these', 'Assign sponsors. The squadron CSS assigns sponsors'],
+    how: [
+      ['Approve a profile', 'Open Profiles, confirm the unit, dates and gaining base match the member’s orders, then select Approve. Select Send back to request corrections.'],
+      ['Maintain the master list', 'Open Master list. Due dates are set in days before departure or days after arrival, so they apply to every member automatically. Select "Add recommended tasks" when new standard tasks are available.'],
+      ['Staff offices', 'Open Users and assign the Office worker or Office lead role with the correct office, so requests reach the right personnel.']
+    ]
+  },
+  global: {
+    purpose: 'Oversee the PCS Path platform across all bases and respond to assistance requests.',
+    can: ['Activate bases and add new bases', 'Approve requests for MPF and global admin rights', 'Respond to help and feedback requests, including sending password reset links', 'Publish Air Force-wide tips'],
+    cannot: ['There are no technical restrictions on this role. Grant elevated rights sparingly and only to personnel who require them'],
+    how: [
+      ['Respond to a request', 'Open Support. Reply in PCS Path, or by email for requests submitted while signed out, then mark the request resolved.'],
+      ['Reset access', 'For sign-in requests, select "Send password reset" to email the member a reset link. PCS Path administrators cannot view or set passwords.'],
+      ['Onboard a base', 'Activate the base in Bases, approve its MPF administrator, and confirm the starter checklist has been reviewed for local accuracy.']
+    ]
+  }
+};
+const GUIDE_SEEN = 'pcspath.guide.seen.';
+function guideButton(r) {
+  const hdr = document.querySelector('#' + SCREENS[r] + ' .hdr');
+  if (!hdr || hdr.querySelector('.gbtn')) return;
+  const b = document.createElement('button');
+  b.className = 'gbtn'; b.setAttribute('aria-label', 'Role guide'); b.innerHTML = '<i class="ti ti-info-circle" aria-hidden="true"></i><span>Guide</span>';
+  b.onclick = () => openGuide(role);
+  hdr.appendChild(b);
+}
+function openGuide(r) {
+  const cur = document.querySelector('.scr.on');
+  if (cur && cur.id !== 's-guide') ui.guideBack = cur.id;
+  ui.guideRole = r;
+  try { localStorage.setItem(GUIDE_SEEN + r, '1'); } catch (_) { /* ignore */ }
+  drawGuide(); show('s-guide');
+}
+function closeGuide() { show(ui.guideBack || (role ? SCREENS[role] : 's-login')); }
+function drawGuide() {
+  const r = ui.guideRole, g = ROLE_GUIDE[r], m = ROLE_META[r];
+  el('gd-title').textContent = m.n + ' guide';
+  el('gd-sub').textContent = g.purpose;
+  const list = (items, icon, color) => items.map(x => `<div class="dmr" style="font-size:12.5px;margin-bottom:7px"><i class="ti ${icon}" style="color:${color}" aria-hidden="true"></i><span>${esc(x)}</span></div>`).join('');
+  const others = me ? ROLE_ORDER.filter(x => me.roles.includes(x) && x !== r) : ROLE_ORDER.filter(x => x !== r);
+  el('gd-body').innerHTML = `<div class="card"><div class="dlbl">You can</div>${list(g.can, 'ti-circle-check', '#1D9E75')}</div>` +
+    `<div class="card"><div class="dlbl">You cannot</div>${list(g.cannot, 'ti-circle-x', '#A32D2D')}</div>` +
+    `<div class="card"><div class="dlbl">How to</div>${g.how.map(h => `<details class="faq"><summary>${esc(h[0])}</summary><p>${esc(h[1])}</p></details>`).join('')}</div>` +
+    `<div class="card"><div class="dlbl">Rules for all users</div>${list((g.rules || []).concat(GENERAL_RULES), 'ti-point', 'var(--t3)')}</div>` +
+    (others.length ? `<div class="dlbl" style="margin-top:4px">${me ? 'Guides for your other roles' : 'Other role guides'}</div><div class="chips">${others.map(x => `<button class="chipbtn" onclick="openGuide('${x}')"><i class="ti ${ROLE_META[x].i}" aria-hidden="true"></i><span>${esc(ROLE_META[x].n)}</span></button>`).join('')}</div>` : '') +
+    `<button class="pbtn bblue" style="margin-top:6px" onclick="closeGuide()">${role ? 'Continue' : 'Back'}</button>`;
+}
+function guideChips() {
+  const rs = me ? ROLE_ORDER.filter(r => me.roles.includes(r)) : ROLE_ORDER;
+  return `<div class="card"><div class="dlbl">Role guides</div><div class="ts" style="margin-bottom:8px">What each role can and cannot do, and how to complete common actions.</div><div class="chips">${rs.map(r => `<button class="chipbtn" onclick="openGuide('${r}')"><i class="ti ${ROLE_META[r].i}" aria-hidden="true"></i><span>${esc(ROLE_META[r].n)}</span></button>`).join('')}</div></div>`;
 }
 
 boot();

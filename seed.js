@@ -26,8 +26,9 @@
 
   // Out-processing. off = days before departure the task is due.
   var OUT = [
+    { k: 'o0', off: 120, o: 'mpf', n: 'Complete the vMPF Initial Assignment Briefing', of: 'MPF Career Development', l: 'vMPF, Individual Actions, Assignments', h: '', p: '238-5447', d: 'Complete the Initial Assignment Briefing in vMPF as soon as you receive assignment notification. It opens your virtual out-processing checklist and identifies the documents your MPF requires, such as retainability, medical and dental clearance and, for overseas assignments, family member travel screening. Save a copy of the completed briefing for your records.' },
     { k: 'o1', off: 90, o: 'tmo', tag: 'pov', carry: 1, n: 'TMO personal property and POV', of: 'TMO, HHG and POV', l: 'Bldg 426, next to the Base Library', h: '0900-1500 Monday to Friday', p: '238-5779', d: 'Appointments cannot be made without orders. Complete the PPTY form, Locally Generated Form 75, then send it with your orders to 100lrs.tmo@us.af.mil. Allow 72 business hours for a response. Watch the Outbound Personal Property presentation on the TMO SharePoint before you go.' },
-    { k: 'o53', off: 90, tag: 'fam', carry: 1, n: 'Family member medical and educational clearance', of: 'Family Member Relocation Clearance', l: 'Lakenheath Hospital', h: '0800-1600 Monday to Friday', p: '226-8202', d: 'Initiate in MyVector. If you are EFMP enrolled or PCSing OCONUS you are prompted for this automatically after the travel screening questionnaire. The AF Form 1466 is no longer used for PCS. Use Chrome or Edge. Signed off once your FMTS application receives a final travel determination.' },
+    { k: 'o53', off: 90, tag: 'fam', carry: 1, n: 'Family member medical and educational clearance', of: 'Family Member Relocation Clearance', l: 'Lakenheath Hospital', h: '0800-1600 Monday to Friday', p: '226-8202', d: 'Members with dependents complete the Family Member Travel Screening questionnaire in MyVector after assignment notification. The questionnaire provides immediate clearance or identifies further action. EFMP-enrolled families and those PCSing overseas are directed to Q-base to provide medical and educational information. The AF Form 1466 is no longer used for PCS. Orders may not be valid for dependent travel until clearance is confirmed. Signed off once a final travel determination is issued.' },
     { k: 'o2', off: 60, n: 'TMO passenger travel', of: 'Passenger Travel and CTO', l: 'Bldg 598', h: '0900-1500 Monday to Friday', p: '238-2061', d: 'Start travel using the Automated Passenger Reservation Tool on the Passenger Travel Access Point. Guides for the APRT and the travel process are on the TMO SharePoint. For help email 100lrs.pax@us.af.mil, which cannot accept encrypted mail. You will not be signed out of vMPF until 5 business days before departure.' },
     { k: 'o3', off: 60, tag: 'efmp', n: 'M and FRC EFMP family needs assessment', of: 'EFMP Family Support', l: 'M and FRC, Bldg 460', h: '0800-1630 Monday to Friday', p: '238-3406', d: 'Required for Q-coded Airmen. Family needs assessments go to the gaining installation so support continues without a gap. Schedule after your travel screening clearance is authorised. Contact 100FSS.FSH.EFMP@us.af.mil with your DoD ID. If you are not Q-coded, email the same box to say so and you will be cleared.' },
     { k: 'o4', off: 60, n: 'EZ PCS outbound briefing', of: 'M and FRC', l: 'Bldg 460', h: '0730-1630 Monday to Friday', p: '238-3406', d: 'Attend roughly four months before departure. Covers finance, personal property, vehicle shipment, passenger travel, Tricare and Pass and Registration. Register through the M and FRC events page. If short-notice orders make this impossible, email 100fss.fsfr@us.af.mil with your DoD ID.' },
@@ -93,6 +94,8 @@
     { k: 'i106', off: 14, country: 'Germany', n: 'USAREUR drivers licence', of: 'Vehicle Registration', l: 'Vehicle registration office', h: '0800-1530 Monday to Friday', p: '', d: 'Germany requires the USAREUR licence and your US licence alone is not valid. A written test is required. Bring your US licence, orders and proof of insurance.' },
     { k: 'i107', off: 14, country: 'Germany', n: 'NATO SOFA customs card', of: 'Customs Office', l: 'Customs office', h: '0800-1600 Monday to Friday', p: '', d: 'Issued for duty-free purchases and customs clearance in Germany. Bring your orders and ID.' },
     { k: 'i110', off: 14, country: 'UK', n: 'UK driving permit and vehicle registration', of: 'Pass and Registration', l: 'Pass and ID office', h: '0800-1530 Monday to Friday', p: '', d: 'Register any vehicle you bring and confirm what licence you need to drive in the UK. Bring your US licence, orders, proof of insurance and vehicle documents.' },
+    { k: 'i111', off: 3, n: 'Update vRED, SGLI and AFPAAS', of: 'Your unit', l: 'AF Portal, vMPF', h: '', p: '', d: 'Within 72 hours of arrival, update your Record of Emergency Data (vRED), confirm your SGLI beneficiaries and update your location and contact information in AFPAAS. Your orderly room may ask for confirmation.' },
+    { k: 'i112', off: 5, o: 'fin', n: 'File your PCS travel voucher', of: 'Finance', l: 'DTS or DD Form 1351-2', h: '0800-1500 Monday to Friday', p: '', d: 'Submit your PCS travel claim within five business days of arrival, or as directed by the finance office. Include your orders and amendments, lodging receipts, and any TLE or TLA documentation. Claim dislocation allowance if you have not already received it.' },
     { k: 'i108', off: 30, n: 'Newcomer orientation brief', of: 'Airman and Family Readiness', l: 'A and FRC', h: '0730-1630 Monday to Friday', p: '', d: 'Base-wide orientation covering local laws, driving, host nation customs and available services. Offered regularly, sign up through your sponsor.' },
     { k: 'i109', off: 30, n: 'Commander in-processing', of: 'Squadron leadership', l: 'Squadron', h: 'Duty hours', p: '', d: 'Final sign-off. Your commander confirms in-processing is complete and you are released to full duty status.' }
   ];
@@ -106,15 +109,18 @@
   ];
 
   var BASE_TIPS = [
-    { tier: 'mpf', label: 'Base MPF', applies: 'out', title: 'Start TMO the week orders drop', body: 'Shipping slots fill fast during summer PCS season. Submitting your PPTY Form 75 early gives you far more control over your pack-out dates.' },
-    { tier: 'mpf', label: 'Base MPF', applies: 'both', title: 'Bring several copies of your orders everywhere', body: 'Nearly every office on this checklist asks for a copy. Print ten and keep a digital copy on your phone.' },
-    { tier: 'mpf', label: 'Base MPF', applies: 'out', title: 'Half the checklist clears at squadron final out', body: 'CRO, GTCC, DTS, keys, UTM, fitness, CSA, SEL, security manager and SDAP are all signed at the same CSS appointment. Bring one wet-signed paper checklist and you knock out ten items.' },
-    { tier: 'office', label: 'Medical Standards', applies: 'out', title: 'IMR must be current 90 days past your RNLTD', body: 'That includes DRHA and PHA. Check it before you email the clearance memorandum or we will send it back.' },
-    { tier: 'office', label: 'Medical Records', applies: 'out', title: 'Do not come to medical records too early', body: 'You must be within 20 days of final out or the system will not let us clear you. Bring 2 copies of orders to the Tricare atrium Tuesday, Wednesday or Thursday between 1000 and 1400.' },
-    { tier: 'counsel', label: 'Base counselor', applies: 'out', title: 'Sell or export your vehicle before Pass and Reg', body: 'They cannot sign you off until every vehicle is off your record. Book a separate earlier appointment just to collect the export forms.' }
+    { tier: 'mpf', label: 'Base MPF', applies: 'out', title: 'Initiate household goods action upon receipt of orders', body: 'Shipment dates fill quickly during the summer moving season. Submit the PPTY Form 75 and your orders to TMO as early as possible. Household goods moves are scheduled through the Defense Personal Property System (DPS) at move.mil.' },
+    { tier: 'mpf', label: 'Base MPF', applies: 'both', title: 'Retain multiple copies of your orders', body: 'Most offices require a copy of your orders and any amendments. Maintain at least ten printed copies and an electronic copy on your phone.' },
+    { tier: 'mpf', label: 'Base MPF', applies: 'out', title: 'Several items are cleared at squadron final out', body: 'CRO, GTCC, DTS, keys, UTM, fitness, CSA, SEL, security manager and SDAP are cleared at the same CSS appointment. Bring one wet-signed paper checklist to that appointment.' },
+    { tier: 'mpf', label: 'Base MPF', applies: 'out', title: 'Advance pay and dislocation allowance', body: 'If you require funds for the move, request advance pay (DD Form 2560) and dislocation allowance through the finance office before departure. Advance pay is repaid through pay deductions. Consult finance before requesting it.' },
+    { tier: 'mpf', label: 'Base MPF', applies: 'in', title: 'Temporary lodging entitlements differ by location', body: 'Temporary Lodging Expense (TLE) applies in CONUS and is claimed on your travel voucher. Temporary Lodging Allowance (TLA) applies overseas and is paid through military pay. Retain all lodging receipts.' },
+    { tier: 'mpf', label: 'Base MPF', applies: 'in', title: 'Inspect household goods at delivery', body: 'Note any missing or damaged items on the delivery inventory before signing, photograph the damage and report it in DPS. Confirm the current claim deadline with your Transportation Office, as it has changed recently.' },
+    { tier: 'office', label: 'Medical Standards', applies: 'out', title: 'Your IMR must remain current 90 days beyond your RNLTD', body: 'This includes the DRHA and PHA. Verify your IMR before submitting the clearance memorandum, or it will be returned.' },
+    { tier: 'office', label: 'Medical Records', applies: 'out', title: 'Medical records cannot be cleared early', body: 'You must be within 20 days of final out to be cleared. Bring two copies of your orders to the Tricare atrium on Tuesday, Wednesday or Thursday between 1000 and 1400.' },
+    { tier: 'counsel', label: 'Base counselor', applies: 'out', title: 'Dispose of vehicles before visiting Pass and Registration', body: 'Pass and Registration cannot clear you until every vehicle is removed from your record. Schedule a separate, earlier visit to obtain export forms.' }
   ];
   var GLOBAL_TIPS = [
-    { tier: 'global', label: 'Global', applies: 'out', title: 'Apply for your no-fee passport immediately', body: 'No-fee passports take six to eight weeks. Apply through MPF the moment orders drop rather than waiting for travel to be booked.' }
+    { tier: 'global', label: 'Global', applies: 'out', title: 'Apply for no-fee passports immediately', body: 'No-fee passports for official travel can take several weeks. Apply through the MPF upon receipt of orders rather than waiting for travel to be booked.' }
   ];
 
   // A ready-made checklist for one base. prefix gives readable ids (demo only).
@@ -162,7 +168,7 @@
     var T = dayFromToday;
     var now = new Date();
     function ts(daysAgo, h, m) { var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, h || 9, m || 0); return d.toISOString(); }
-    var db = { version: 4, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
+    var db = { version: 5, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
 
     db.bases = [
       { id: 'mildenhall', name: 'RAF Mildenhall', country: 'UK', live: true },
@@ -217,6 +223,7 @@
     }
     function mark(member, k, status, signed) { db.task_progress.push({ member_id: member, task_id: 'mil-' + k, status: status, signed_by: null, signed_name: signed || null, updated_at: ts(1) }); }
     // Carter: well along, two items overdue, three due in three days.
+    done('u-carter', ['o0'], 'MPF Career Development');
     done('u-carter', ['o53'], 'Final travel determination');
     done('u-carter', ['o3'], 'EFMP-FS');
     done('u-carter', ['o4'], 'M and FRC');
@@ -314,7 +321,7 @@
     db.support_tickets = [
       { id: 'st-1', user_id: 'u-carter', email: 'carter@us.af.mil', name: 'SSgt Carter, James', base_id: 'mildenhall', kind: 'bug', message: 'The Upload a file button on Medical records does not open my photos on my iPhone.', context: 'Member · screen: member · PCS Path v15 · iPhone Safari', attachment_path: null, attachment_name: null, status: 'new', reply: null, replied_at: null, created_at: ts(0, 11, 20) },
       { id: 'st-2', user_id: null, email: 'maria.lopez@us.af.mil', name: 'A1C Lopez, Maria', base_id: null, kind: 'account', message: 'I asked for a password reset twice but the email never came.', context: 'Signed out · screen: login · PCS Path v15', attachment_path: null, attachment_name: null, status: 'new', reply: null, replied_at: null, created_at: ts(0, 12, 2) },
-      { id: 'st-3', user_id: 'u-webb', email: 'webb@us.af.mil', name: 'SSgt Webb, Sarah', base_id: 'mildenhall', kind: 'idea', message: 'Could offices see a list of everything booked for today?', context: 'Office worker · screen: worker · PCS Path v15', attachment_path: null, attachment_name: null, status: 'resolved', reply: 'Good idea. Confirmed appointments now show under Appts, with today marked.', replied_at: ts(1), created_at: ts(3) }
+      { id: 'st-3', user_id: 'u-webb', email: 'webb@us.af.mil', name: 'SSgt Webb, Sarah', base_id: 'mildenhall', kind: 'idea', message: 'Could offices see a list of everything booked for today?', context: 'Office worker · screen: worker · PCS Path v15', attachment_path: null, attachment_name: null, status: 'resolved', reply: 'Thank you for the suggestion. Confirmed appointments are now listed under Appts, with the current day indicated.', replied_at: ts(1), created_at: ts(3) }
     ];
     db.role_requests = [
       { id: 'rr-1', user_id: 'u-webb', name: 'SSgt Webb, Sarah', base_id: 'mildenhall', current_roles: 'Member, Office worker', wanted_role: 'lead', reason: 'Current lead is PCSing soon and I am taking over the office.', status: 'pending', created_at: ts(2) },
@@ -323,5 +330,13 @@
     return db;
   }
 
-  window.PCS_SEED = { build: build, starter: starter, demoAccounts: DEMO_ACCOUNTS, globalTips: GLOBAL_TIPS };
+  var SPONSOR_PREP = [
+    ['Complete eSAT sponsor training', 'Required for first-time sponsors and those not trained in the past year. Available on Military OneSource.'],
+    ['Make initial contact within three duty days', 'Introduce yourself, confirm the arrival date and ask about family members, pets and vehicles.'],
+    ['Send local area and base information', 'Include the newcomer guide, housing office contacts and school information if dependents are travelling.'],
+    ['Confirm temporary lodging', 'Verify a reservation for the arrival date and the expected length of stay.'],
+    ['Arrange transportation on arrival', 'Confirm flight details and transportation from the port of entry.'],
+    ['Coordinate with the gaining supervisor', 'Confirm the reporting date, duty location and first-week schedule.']
+  ];
+  window.PCS_SEED = { sponsorPrep: SPONSOR_PREP, outKeys: OUT.map(function (t) { return t.k; }), build: build, starter: starter, demoAccounts: DEMO_ACCOUNTS, globalTips: GLOBAL_TIPS };
 })();

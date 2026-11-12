@@ -67,7 +67,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #1
 <div class="card qr">
 <div class="lbl" style="margin:0">Scan with a phone camera</div>
 <div class="box" id="qr" role="img" aria-label="QR code that opens PCS Path"></div>
-<p>Point the camera at the code and tap the link that pops up. Good for briefings, slides or a printed flyer.</p>
+<p>Scan the code with a phone camera and open the link. Suitable for briefings, slides or printed notices.</p>
 <div class="link" style="width:100%"><i class="ti ti-link" aria-hidden="true"></i><span id="url"></span></div>
 </div>
 
@@ -75,7 +75,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #1
 <div class="lbl">Send it</div>
 <label class="lbl" for="msg" style="display:block;text-transform:none;letter-spacing:0;font-size:12px;color:var(--t2);font-weight:600">Message</label>
 <textarea id="msg"></textarea>
-<div class="hint">Edit the message if you like. The buttons below use whatever is in the box.</div>
+<div class="hint">The message may be edited before sending. The buttons below use the text shown.</div>
 <div class="btns" style="margin-top:10px">
 <a class="btn" id="sms" href="#"><i class="ti ti-message" aria-hidden="true"></i>Text it</a>
 <a class="btn" id="mail" href="#"><i class="ti ti-mail" aria-hidden="true"></i>Email it</a>
@@ -107,7 +107,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #1
 </div>
 
 <a class="btn open" id="open" href="./"><i class="ti ti-arrow-right" aria-hidden="true"></i>Open PCS Path</a>
-<div class="foot">PCS Path prototype &middot; share with people taking part in the pilot</div>
+<div class="foot">PCS Path prototype &middot; for distribution to pilot participants only</div>
 </div>
 </div>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -117,7 +117,7 @@ button:focus-visible,a:focus-visible,textarea:focus-visible{outline:2px solid #1
   var appUrl = new URL('./', location.href).href;
   var el = function (id) { return document.getElementById(id); };
   var msg = el('msg');
-  msg.value = 'Hey! I\'m piloting PCS Path, an app that turns your whole PCS out-processing and in-processing into one checklist with due dates, office hours and reminders.\n\nOpen it on your phone, add it to your home screen, and sign up with your work email:\n' + appUrl;
+  msg.value = 'PCS Path is being piloted to consolidate PCS out-processing and in-processing into a single checklist with due dates, office information, appointment requests and reminders.\n\nTo participate, open the link below on your phone, add it to your home screen and register with your official email address:\n' + appUrl;
   el('url').textContent = appUrl;
 
   var t;
