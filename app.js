@@ -46,7 +46,7 @@ const TABS = {
   worker: ['w', ['queue', 'req', 'hist', 'tips'], 'bon'],
   lead: ['l', ['sched', 'req', 'queue', 'office', 'tips'], 'lon'],
   counsel: ['c', ['mem', 'so', 'appt', 'tips'], 'con'],
-  css: ['x', ['need', 'all', 'people'], 'son'],
+  css: ['x', ['need', 'all', 'people', 'list', 'so'], 'son'],
   mpf: ['b', ['prof', 'tasks', 'appt', 'inb', 'users'], 'bon'],
   cmd: ['d', ['out', 'in', 'tips'], 'con'],
   global: ['g', ['health', 'bases', 'req', 'support', 'tips'], 'gon']
@@ -146,11 +146,16 @@ const members = () => S.profiles.filter(p => p.status === 'active' && (p.roles |
 const inBase = p => (p.dir === 'in' ? p.base_id : p.gaining_base);
 const unlockedIn = p => p.dir === 'in' || p.handoff === 'complete';
 
+// Squadron tasks: a task with a unit is shown only to members of that unit.
+const unitKey = u => String(u || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+const hasUnitCol = () => DB.mode === 'demo' || S.tasks.some(t => 'unit' in t);
+// Out-processing uses the member's current unit; in-processing uses their gaining unit.
+const unitFor = (p, dir) => dir === 'out' || p.dir === 'in' ? p.unit : p.gaining_unit;
 function tasksFor(p, dir) {
   const base = dir === 'out' ? p.base_id : inBase(p);
   if (!base || p.dir === 'none' || (dir === 'out' && p.dir === 'in')) return [];
-  const f = p.flags || {};
-  return S.tasks.filter(t => t.base_id === base && t.dir === dir && (!t.tag || f[t.tag]))
+  const f = p.flags || {}, mu = unitKey(unitFor(p, dir));
+  return S.tasks.filter(t => t.base_id === base && t.dir === dir && (!t.tag || f[t.tag]) && (!t.unit || (mu && unitKey(t.unit) === mu)))
     .sort((a, b) => (dir === 'out' ? b.offset_days - a.offset_days : a.offset_days - b.offset_days) || (a.sort - b.sort));
 }
 function dueOf(p, t) { return t.dir === 'out' ? addDays(p.depart, -t.offset_days) : addDays(p.rnltd, t.offset_days); }
@@ -260,6 +265,8 @@ async function boot() {
     }
   });
   renderLoginExtras();
+  // Show a banner on every screen in demo mode when a real database exists, so nobody mistakes it for the real app.
+  el('demobar').classList.toggle('on', DB.mode === 'demo' && !!(window.PCS_CONFIG && window.PCS_CONFIG.supabaseUrl));
   try {
     if (navigator.onLine !== false) await DB.flush();
     const uid = await DB.session();
@@ -399,7 +406,8 @@ async function submitProfile() {
   const meta = {
     name: val('su-name').trim(), unit: val('su-unit').trim(), base_id: val('su-base'), dir,
     gaining_base: dir === 'in' || !moving ? '' : val('su-gain'), depart: dir === 'in' || !moving ? '' : val('su-dep'),
-    rnltd: moving ? val('su-rnltd') : '', move_type: moving ? val('su-type') : '', flags: moving ? flags : {}
+    rnltd: moving ? val('su-rnltd') : '', move_type: moving ? val('su-type') : '', flags: moving ? flags : {},
+    gaining_unit: moving && dir !== 'in' ? val('su-gunit').trim() : ''
   };
   const email = val('su-email').trim().toLowerCase();
   busy('su-go', true, 'Submitting');
@@ -457,11 +465,14 @@ function moveEditor(pre, p) {
   const bases = S.bases.slice().sort(sortByName);
   return `<label class="fl" for="${pre}-dir">What are you doing</label><select class="fs" id="${pre}-dir">${opt('out', 'Out-processing', p.dir === 'out')}${opt('in', 'In-processing', p.dir === 'in')}${opt('both', 'Both, mid-move', p.dir === 'both')}${opt('none', 'None, not moving', p.dir === 'none')}</select>
 <label class="fl" for="${pre}-gain">Gaining base</label><select class="fs" id="${pre}-gain">${baseOptions(bases, p.gaining_base, 'Not yet assigned')}</select>
+${DB.mode === 'demo' || 'gaining_unit' in p ? `<label class="fl" for="${pre}-gunit">Gaining unit, if known</label><input class="fi" id="${pre}-gunit" value="${esc(p.gaining_unit || '')}" placeholder="86 LRS">` : ''}
 <div class="g2"><div><label class="fl" for="${pre}-dep">Departure date</label><input class="fi" type="date" id="${pre}-dep" value="${esc(p.depart || '')}"></div><div><label class="fl" for="${pre}-rnltd">RNLTD</label><input class="fi" type="date" id="${pre}-rnltd" value="${esc(p.rnltd || '')}"></div></div>
 <label class="fl" for="${pre}-type">Move type</label><select class="fs" id="${pre}-type">${MOVE_TYPES.map(t => opt(t, t, p.move_type === t)).join('')}</select>`;
 }
 function readMove(pre) {
-  return { dir: val(pre + '-dir'), gaining_base: val(pre + '-gain') || null, depart: val(pre + '-dep') || null, rnltd: val(pre + '-rnltd') || null, move_type: val(pre + '-type') };
+  const m = { dir: val(pre + '-dir'), gaining_base: val(pre + '-gain') || null, depart: val(pre + '-dep') || null, rnltd: val(pre + '-rnltd') || null, move_type: val(pre + '-type') };
+  if (el(pre + '-gunit')) m.gaining_unit = val(pre + '-gunit').trim() || null;
+  return m;
 }
 
 // ---------------------------------------------------------------------
@@ -583,6 +594,7 @@ function taskCard(p, t, locked) {
   if (t.carry && t.dir === 'out') rows += dmr('ti-arrow-right-circle', 'Records carry over to ' + baseName(p.gaining_base));
   if (t.carry && t.dir === 'in') rows += dmr('ti-link', 'Bring the records you carried from ' + baseName(p.base_id));
   if (t.triggers_handoff) rows += dmr('ti-plane', 'Signing this releases your record to ' + baseName(p.gaining_base));
+  if (t.unit) rows += dmr('ti-flag', 'Squadron requirement for ' + t.unit + '. Signed off by your squadron CSS.');
   if (fin && r && r.signed_name) rows += dmr('ti-writing-sign', r.signed_name);
   if (s === 'submitted') rows += dmr('ti-hourglass', 'You marked your part done. ' + (off ? off.name : 'Your counselor') + ' confirms and signs it off.');
   const bk = myBooking(p.id, t.id);
@@ -600,7 +612,7 @@ function taskCard(p, t, locked) {
   }
   btns = picker + (btns ? '<div class="brow">' + btns + '</div>' : '');
   const nf = formsFor(t.id).length + myFilesFor(p.id, t.id).length;
-  return `<div class="card${fin ? ' dim' : ''}"><button class="trow" aria-expanded="${open}" onclick="tapTask('${t.id}')">${mark}<span class="tb"><span class="tn">${esc(t.name)}</span><span class="ts">${esc(t.office_name || '')}${t.loc ? ' · ' + esc(t.loc) : ''}${nf ? ' · <i class="ti ti-paperclip" aria-hidden="true"></i>' + nf + '<span class="sr"> files</span>' : ''}</span></span>${badge}</button><div class="tdet${open ? ' on' : ''}"><div class="dlbl">What this is</div><div class="dtxt">${esc(t.descr)}</div><div class="dmeta">${rows}</div>${memberFilesBlock(p, t, locked)}${btns}</div></div>`;
+  return `<div class="card${fin ? ' dim' : ''}"><button class="trow" aria-expanded="${open}" onclick="tapTask('${t.id}')">${mark}<span class="tb"><span class="tn">${esc(t.name)}</span><span class="ts">${t.unit ? esc(t.unit) + ' squadron task · ' : ''}${esc(t.office_name || '')}${t.loc ? ' · ' + esc(t.loc) : ''}${nf ? ' · <i class="ti ti-paperclip" aria-hidden="true"></i>' + nf + '<span class="sr"> files</span>' : ''}</span></span>${badge}</button><div class="tdet${open ? ' on' : ''}"><div class="dlbl">What this is</div><div class="dtxt">${esc(t.descr)}</div><div class="dmeta">${rows}</div>${memberFilesBlock(p, t, locked)}${btns}</div></div>`;
 }
 
 // ---------------------------------------------------------------------
@@ -1035,7 +1047,7 @@ function drawQueue(cid) {
 }
 async function signOff(memberId, taskId, status) {
   const m = P(memberId), t = TK(taskId), off = myOffice();
-  const who = (off ? off.name : ROLE_META[role].n) + ' on ' + fmtShort(today());
+  const who = (role === 'css' && me.unit ? me.unit + ' CSS' : off ? off.name : ROLE_META[role].n) + ' on ' + fmtShort(today());
   const ok = await ups('task_progress', { member_id: memberId, task_id: taskId, status, signed_by: me.id, signed_name: status === 'na' ? 'Marked not needed by ' + who : 'Signed by ' + who, updated_at: new Date().toISOString() }, ['member_id', 'task_id']);
   if (!ok) return;
   const notes = [{ user_id: memberId, kind: 'signoff', title: t.name + (status === 'na' ? ' marked not needed' : ' signed off'), body: 'By ' + me.name + (off ? ', ' + off.name : '') + '.' }];
@@ -1256,13 +1268,14 @@ function shareButton(label) {
   return `<a class="ibtn" href="share.html" style="display:block;text-align:center;text-decoration:none;padding:9px"><i class="ti ti-share" aria-hidden="true"></i> ${esc(label)}</a>`;
 }
 function drawProfiles() {
-  const pend = S.profiles.filter(p => p.status === 'pending' && p.base_id === me.base_id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const allBases = hasRole('global');
+  const pend = S.profiles.filter(p => p.status === 'pending' && (allBases || p.base_id === me.base_id)).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const bg = el('bbadge'); bg.textContent = pend.length; bg.classList.toggle('on', pend.length > 0);
   const invite = shareButton('Invite members: text, email or QR code');
   const setup = setupCard();
   if (!pend.length) { el('bprof').innerHTML = setup + emp('ti-user-check', 'No profiles waiting') + invite; return; }
   const all = pend.length > 1 ? `<button class="pbtn bgreen" onclick="approveAll()">Approve all ${pend.length}</button>` : '';
-  el('bprof').innerHTML = setup + invite + all + pend.map(a => `<div class="card"><div class="row">${avatar(a)}<div style="flex:1"><div class="tn">${esc(a.name)}</div><div class="ts">${esc(a.unit || 'No unit')} · ${esc(a.email)}</div></div>${pill('pa', 'Pending')}</div><div class="dmeta" style="margin-top:11px">${profileSummary(a)}</div>` +
+  el('bprof').innerHTML = setup + invite + all + pend.map(a => `<div class="card"><div class="row">${avatar(a)}<div style="flex:1"><div class="tn">${esc(a.name)}</div><div class="ts">${esc(a.unit || 'No unit')} · ${esc(a.email)}</div>${allBases && a.base_id !== me.base_id ? `<div class="ts">${esc(baseName(a.base_id))}</div>` : ''}</div>${pill('pa', 'Pending')}</div><div class="dmeta" style="margin-top:11px">${profileSummary(a)}</div>` +
     (ui.returnFor === a.id ? `<label class="fl" for="rt-${a.id}">What needs fixing</label><textarea class="fi" id="rt-${a.id}" placeholder="Your departure date does not match your orders"></textarea><div class="brow"><button class="pbtn bgreen" onclick="returnProfile('${a.id}')">Send back with note</button><button class="ibtn" onclick="ui.returnFor=null;drawProfiles()">Cancel</button></div>`
       : `<div class="brow"><button class="sbtn" style="flex:1" onclick="approveProfile('${a.id}')">Approve and unlock</button><button class="ibtn dg" onclick="ui.returnFor='${a.id}';drawProfiles()">Send back</button></div>`) + '</div>').join('');
 }
@@ -1287,7 +1300,7 @@ function setupCard() {
 }
 async function openMyBase() { if (await upd('bases', { id: me.base_id }, { live: true })) { toast(baseName(me.base_id) + ' is open for sign-ups.'); drawRole(); } }
 async function approveAll() {
-  const pend = S.profiles.filter(p => p.status === 'pending' && p.base_id === me.base_id);
+  const pend = S.profiles.filter(p => p.status === 'pending' && (hasRole('global') || p.base_id === me.base_id));
   if (!window.confirm('Approve all ' + pend.length + ' profiles? Check the details first if you are not sure.')) return;
   for (const p of pend) await approveProfile(p.id, true);
   toast(pend.length + ' profiles approved. Their checklists are live.'); drawMpf();
@@ -1317,6 +1330,7 @@ function drawMaster() {
     if (ui.edit === t.id) return taskForm(t);
     const off = t.office_id ? O(t.office_id) : null;
     let flags = '';
+    if (t.unit) flags += pill('psp', 'Squadron: ' + t.unit);
     if (t.tag) flags += pill('pgy', 'Only if ' + (TAG_LABEL[t.tag] || t.tag));
     if (t.carry) flags += pill('pp', 'Carries over');
     if (t.triggers_handoff) flags += pill('pi', 'Triggers handoff');
@@ -1342,6 +1356,7 @@ function taskForm(t) {
 <label class="fl" for="tf-h">Hours</label><input class="fi" id="tf-h" value="${esc(x.hours || '')}" placeholder="1000-1700 Monday to Saturday">
 <label class="fl" for="tf-off">${ui.mdir === 'out' ? 'Due, days before departure' : 'Due, days after RNLTD'}</label><input class="fi" id="tf-off" type="number" min="0" max="365" value="${x.offset_days != null ? x.offset_days : 30}">
 <label class="fl" for="tf-tag">Show to</label><select class="fs" id="tf-tag">${opt('', 'Everyone', !x.tag)}${FLAG_OPTS.map(f => opt(f[0], 'Only: ' + f[1], x.tag === f[0])).join('')}</select>
+${hasUnitCol() ? `<label class="fl" for="tf-unit">Squadron only (optional)</label><input class="fi" id="tf-unit" value="${esc(x.unit || '')}" placeholder="Leave blank for the whole base, or enter a unit such as 100 LRS">` : ''}
 <label class="cbx"><input type="checkbox" id="tf-carry"${x.carry ? ' checked' : ''}> Records carry over to the next base</label>
 ${ui.mdir === 'out' ? `<label class="cbx"><input type="checkbox" id="tf-th"${x.triggers_handoff ? ' checked' : ''}> Signing this releases the member's record to the gaining base</label>` : ''}
 <div class="brow"><button class="pbtn bgreen" onclick="saveTask('${t ? t.id : ''}')">${t ? 'Save changes' : 'Save to master list'}</button><button class="ibtn" onclick="ui.edit=null;drawMaster()">Cancel</button></div></div>`;
@@ -1351,6 +1366,7 @@ async function saveTask(id) {
   if (!name) { toast('Enter a task name.', 'err'); return; }
   if (isNaN(off) || off < 0 || off > 365) { toast('Due days must be between 0 and 365.', 'err'); return; }
   const row = { name, descr: val('tf-d').trim() || 'No description added yet.', office_name: val('tf-o').trim() || null, office_id: val('tf-oid') || null, loc: val('tf-loc').trim() || null, hours: val('tf-h').trim() || null, phone: val('tf-p').trim() || null, offset_days: off, tag: val('tf-tag') || null, carry: checked('tf-carry'), triggers_handoff: ui.mdir === 'out' && checked('tf-th') };
+  if (el('tf-unit')) row.unit = val('tf-unit').trim() || null;
   let ok;
   if (id) ok = await upd('tasks', { id }, row);
   else ok = await ins('tasks', Object.assign(row, { base_id: me.base_id, dir: ui.mdir, sort: S.tasks.reduce((m, t) => Math.max(m, t.sort || 0), 0) + 1 }));
@@ -1411,16 +1427,16 @@ async function assignSponsor(memberId) {
 // ---------------------------------------------------------------------
 // Squadron CSS: assigns sponsors and decides who can be a sponsor
 // ---------------------------------------------------------------------
+// A Squadron CSS works only with its own squadron: the unit on the CSS's profile.
+const inMySquadron = p => !!me.unit && p.base_id === me.base_id && unitKey(p.unit) === unitKey(me.unit);
+const arrivingToMySquadron = p => !!me.unit && p.gaining_base === me.base_id && unitKey(p.gaining_unit) === unitKey(me.unit);
 function cssPool() {
-  // Members leaving this base or arriving at it, optionally just this squadron.
-  const base = me.base_id, mine = ui.cssMine !== false && !!me.unit;
-  return members().filter(m => m.id !== me.id && m.dir !== 'none' && (m.base_id === base || m.gaining_base === base) && (!mine || m.unit === me.unit))
+  // Members leaving the squadron, and members arriving with it as their gaining unit.
+  return members().filter(m => m.id !== me.id && m.dir !== 'none' && ((inMySquadron(m) && m.dir !== 'in') || arrivingToMySquadron(m) || (inMySquadron(m) && m.dir === 'in')))
     .sort((a, b) => String(a.rnltd || a.depart || '9999').localeCompare(String(b.rnltd || b.depart || '9999')));
 }
 function cssFilterBar() {
-  if (!me.unit) return '';
-  const mine = ui.cssMine !== false;
-  return `<div class="mtog" style="margin:0"><button class="mtb${mine ? ' on' : ''}" aria-pressed="${mine}" onclick="ui.cssMine=true;drawCss()">${esc(me.unit)}</button><button class="mtb${mine ? '' : ' on'}" aria-pressed="${!mine}" onclick="ui.cssMine=false;drawCss()">All personnel at ${esc(baseName(me.base_id))}</button></div>`;
+  return `<div class="ts" style="margin:0"><i class="ti ti-flag" aria-hidden="true"></i> Limited to ${esc(me.unit)} at ${esc(baseName(me.base_id))}.</div>`;
 }
 function sponsorSelect(m) {
   const list = sponsorCandidates(m), cur = m.sponsor_id;
@@ -1434,16 +1450,82 @@ function cssMemberCard(m) {
   return `<div class="card"><div class="row">${avatar(m)}<div style="flex:1;min-width:0"><div class="tn">${esc(m.name)}</div><div class="ts">${esc((m.unit ? m.unit + ' · ' : '') + line)}</div>${extras ? `<div class="ts">${esc('Bringing ' + extras)}</div>` : ''}</div>${sp ? pill('pn', 'Has sponsor') : pill('pa', 'Needs sponsor')}</div>${sp ? `<div class="ts" style="margin-top:8px"><i class="ti ti-friends" aria-hidden="true"></i> ${esc(sp.name)}</div>` : ''}${sponsorSelect(m)}${sp ? `<button class="lbtn" onclick="removeSponsor('${m.id}')">Remove sponsor</button>` : ''}</div>`;
 }
 function drawCss() {
-  el('cs-name').textContent = 'Squadron CSS · ' + (me.unit || baseName(me.base_id));
+  el('cs-name').textContent = 'Squadron CSS · ' + (me.unit || 'no squadron set');
   el('cs-sub').textContent = me.name;
+  if (!me.unit) {
+    const msg = emp('ti-flag', 'Your profile has no squadron. A Squadron CSS is tied to one squadron, so your MPF must set your unit in Users before you can use this role.');
+    ['xneed', 'xall', 'xpeople', 'xlist', 'xso'].forEach(id => { el(id).innerHTML = msg; });
+    setBadge('xbadge', 0); setBadge('xsobadge', 0); return;
+  }
   const pool = cssPool(), need = pool.filter(m => !m.sponsor_id), have = pool.filter(m => m.sponsor_id);
   setBadge('xbadge', need.length);
   el('xneed').innerHTML = cssFilterBar() + (need.length ? `<div class="ts" style="margin:0">Assign a sponsor to each member. Both parties are notified and may communicate through PCS Path.</div>` + need.map(cssMemberCard).join('') : emp('ti-circle-check', 'All members have an assigned sponsor.'));
   el('xall').innerHTML = cssFilterBar() + (have.length ? have.map(cssMemberCard).join('') : emp('ti-friends', 'No sponsors assigned yet.'));
-  const people = S.profiles.filter(p => p.base_id === me.base_id && p.status === 'active' && p.id !== me.id).sort((a, b) => (b.roles.includes('sponsor') - a.roles.includes('sponsor')) || sortByName(a, b));
+  const people = S.profiles.filter(p => inMySquadron(p) && p.status === 'active' && p.id !== me.id).sort((a, b) => (b.roles.includes('sponsor') - a.roles.includes('sponsor')) || sortByName(a, b));
   const load = id => S.profiles.filter(m => m.sponsor_id === id).length;
   el('xpeople').innerHTML = `<div class="ts" style="margin:0;line-height:1.5">Switch on anyone who can sponsor. Only people switched on here appear when you assign sponsors.</div><div class="card">` +
-    (people.length ? people.map(p => `<div class="rule"><div style="flex:1;min-width:0"><div class="rt">${esc(p.name)}</div><div class="ts">${esc(p.unit || '')}${p.roles.includes('sponsor') ? ' · sponsoring ' + load(p.id) : ''}</div></div>${toggle(`onchange="setSponsorRole('${p.id}',this.checked)"`, p.roles.includes('sponsor'), 'Sponsor: ' + p.name)}</div>`).join('') : '<div class="ts">No other personnel are registered at this base.</div>') + '</div>';
+    (people.length ? people.map(p => `<div class="rule"><div style="flex:1;min-width:0"><div class="rt">${esc(p.name)}</div><div class="ts">${esc(p.unit || '')}${p.roles.includes('sponsor') ? ' · sponsoring ' + load(p.id) : ''}</div></div>${toggle(`onchange="setSponsorRole('${p.id}',this.checked)"`, p.roles.includes('sponsor'), 'Sponsor: ' + p.name)}</div>`).join('') : '<div class="ts">No other personnel are registered in ' + esc(me.unit) + '.</div>') + '</div>';
+  drawCssList(); drawCssSO();
+}
+// Squadron checklist: tasks only this squadron's members see, on top of the base checklist.
+const mySquadronTasks = dir => S.tasks.filter(t => t.base_id === me.base_id && t.unit && unitKey(t.unit) === unitKey(me.unit) && (!dir || t.dir === dir))
+  .sort((a, b) => (a.dir === 'out' ? b.offset_days - a.offset_days : a.offset_days - b.offset_days) || (a.sort - b.sort));
+function drawCssList() {
+  const box = el('xlist'), d = ui.cssDir || 'out';
+  if (!me.unit) { box.innerHTML = emp('ti-flag', 'Your profile has no unit, so a squadron checklist cannot be created. Ask your MPF to add your unit.'); return; }
+  if (!hasUnitCol()) { box.innerHTML = emp('ti-database', 'Squadron checklists are not switched on yet. Your admin needs to run supabase/update-5.sql.'); return; }
+  const list = mySquadronTasks(d);
+  let h = `<div class="ts" style="margin:0;line-height:1.55">Tasks added here appear only for ${esc(me.unit)} members, in addition to the ${esc(baseName(me.base_id))} checklist. Out-processing tasks reach members of ${esc(me.unit)}; in-processing tasks reach members whose gaining unit is ${esc(me.unit)}. You sign these tasks off.</div>`;
+  h += `<div class="mtog" style="margin:0"><button class="mtb${d === 'out' ? ' on' : ''}" aria-pressed="${d === 'out'}" onclick="ui.cssDir='out';ui.cssEdit=null;drawCssList()">Out-processing</button><button class="mtb${d === 'in' ? ' on' : ''}" aria-pressed="${d === 'in'}" onclick="ui.cssDir='in';ui.cssEdit=null;drawCssList()">In-processing</button></div>`;
+  h += list.map(t => ui.cssEdit === t.id ? cssTaskForm(t) : `<div class="card"><div class="row" style="margin-bottom:8px"><div style="flex:1"><div class="tn">${esc(t.name)}</div><div class="ts">${esc(t.office_name || '')}${t.loc ? ' · ' + esc(t.loc) : ''}</div></div>${pill('pm', d === 'out' ? (t.offset_days ? t.offset_days + 'd before' : 'Departure day') : (t.offset_days ? t.offset_days + 'd after' : 'Arrival day'))}</div><div style="font-size:12.5px;color:var(--t2);line-height:1.6">${esc(t.descr)}</div><div class="brow" style="margin-top:10px"><button class="ibtn" onclick="ui.cssEdit='${t.id}';drawCssList()">Edit</button><button class="ibtn dg" onclick="cssDelTask('${t.id}')">Remove</button></div></div>`).join('');
+  if (!list.length) h += emp('ti-list', 'No squadron ' + (d === 'out' ? 'out' : 'in') + '-processing tasks yet.');
+  h += ui.cssEdit === 'new' ? cssTaskForm(null) : `<button class="pbtn bspon" onclick="ui.cssEdit='new';drawCssList()">Add squadron task</button>`;
+  box.innerHTML = h;
+}
+function cssTaskForm(t) {
+  const x = t || {}, d = ui.cssDir || 'out';
+  return `<div class="af"><h4>${t ? 'Edit squadron task' : 'New ' + esc(me.unit) + ' task'}</h4>
+<label class="fl" for="cf-n">Task name</label><input class="fi" id="cf-n" value="${esc(x.name || '')}" placeholder="${d === 'out' ? 'Squadron out-processing brief' : 'Squadron newcomer brief'}">
+<label class="fl" for="cf-d">Description</label><textarea class="fi" id="cf-d" placeholder="What the member must do or bring">${esc(x.descr || '')}</textarea>
+<label class="fl" for="cf-o">Who or where</label><input class="fi" id="cf-o" value="${esc(x.office_name || '')}" placeholder="${esc(me.unit)} CSS">
+<div class="g2"><div><label class="fl" for="cf-loc">Location</label><input class="fi" id="cf-loc" value="${esc(x.loc || '')}" placeholder="Bldg 554"></div><div><label class="fl" for="cf-p">Phone</label><input class="fi" id="cf-p" value="${esc(x.phone || '')}" placeholder="238-5450"></div></div>
+<label class="fl" for="cf-h">Hours</label><input class="fi" id="cf-h" value="${esc(x.hours || '')}" placeholder="0800-1530 Monday to Friday">
+<label class="fl" for="cf-off">${d === 'out' ? 'Due, days before departure' : 'Due, days after RNLTD'}</label><input class="fi" id="cf-off" type="number" min="0" max="365" value="${x.offset_days != null ? x.offset_days : (d === 'out' ? 10 : 5)}">
+<label class="fl" for="cf-tag">Show to</label><select class="fs" id="cf-tag">${opt('', 'All ' + esc(me.unit) + ' members', !x.tag)}${FLAG_OPTS.map(f => opt(f[0], 'Only: ' + f[1], x.tag === f[0])).join('')}</select>
+<div class="brow"><button class="pbtn bspon" onclick="cssSaveTask('${t ? t.id : ''}')">${t ? 'Save changes' : 'Add to squadron checklist'}</button><button class="ibtn" onclick="ui.cssEdit=null;drawCssList()">Cancel</button></div></div>`;
+}
+async function cssSaveTask(id) {
+  const name = val('cf-n').trim(), off = parseInt(val('cf-off'), 10), d = ui.cssDir || 'out';
+  if (!name) { toast('Enter a task name.', 'err'); return; }
+  if (isNaN(off) || off < 0 || off > 365) { toast('Due days must be between 0 and 365.', 'err'); return; }
+  const row = { name, descr: val('cf-d').trim() || 'No description provided.', office_name: val('cf-o').trim() || me.unit + ' CSS', loc: val('cf-loc').trim() || null, hours: val('cf-h').trim() || null, phone: val('cf-p').trim() || null, offset_days: off, tag: val('cf-tag') || null };
+  const ok = id ? await upd('tasks', { id }, row)
+    : await ins('tasks', Object.assign(row, { base_id: me.base_id, dir: d, unit: me.unit, office_id: null, carry: false, triggers_handoff: false, sort: S.tasks.reduce((m, t) => Math.max(m, t.sort || 0), 0) + 1 }));
+  if (ok) { ui.cssEdit = null; toast(id ? 'Saved.' : 'Added. ' + me.unit + ' members now see this task.'); drawCss(); }
+}
+async function cssDelTask(id) {
+  const t = TK(id);
+  if (!window.confirm('Remove "' + t.name + '" from the ' + me.unit + ' checklist? Its sign-offs are removed as well.')) return;
+  if (await del('tasks', { id })) { toast('Task removed.'); drawCss(); }
+}
+// Squadron sign-off: members with outstanding squadron tasks.
+function drawCssSO() {
+  const box = el('xso'), mine = new Set(mySquadronTasks().map(t => t.id));
+  if (!mine.size) { box.innerHTML = emp('ti-clipboard-check', 'Add tasks in Checklist and they appear here for sign-off.'); setBadge('xsobadge', 0); return; }
+  const rows = [];
+  members().forEach(m => {
+    if (m.id === me.id) return;
+    const items = [];
+    ['out', 'in'].forEach(dir => {
+      if (dir === 'in' && !unlockedIn(m)) return;
+      tasksFor(m, dir).forEach(t => { if (!mine.has(t.id)) return; const s = stateOf(m, t); if (!isFinal(s)) items.push({ t, s, due: dueOf(m, t) }); });
+    });
+    if (items.length) rows.push({ m, items });
+  });
+  setBadge('xsobadge', rows.reduce((n, r) => n + r.items.filter(i => i.s === 'submitted').length, 0));
+  if (!rows.length) { box.innerHTML = emp('ti-circle-check', 'No ' + me.unit + ' members have outstanding squadron tasks.'); return; }
+  box.innerHTML = rows.map(({ m, items }) => `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">${m.gaining_base === me.base_id && m.dir !== 'out' ? 'Arriving · RNLTD ' + esc(fmt(m.rnltd)) : 'Departs ' + esc(fmt(m.depart))}</div></div></div>` +
+    items.map(i => `<div class="frow"><div style="flex:1"><div style="font-size:12.5px;font-weight:600">${esc(i.t.name)}</div><div class="ts">${i.s === 'submitted' ? 'Member reports their part complete' : i.due ? 'Due ' + esc(fmt(i.due)) : ''}</div>${uploadsChips(m.id, i.t.id)}</div>${i.s === 'submitted' ? pill('pa', 'Ready') : i.s === 'overdue' ? pill('pr', 'Overdue') : ''}</div><div class="brow" style="justify-content:flex-end;padding-bottom:4px"><button class="ibtn" onclick="signOff('${m.id}','${i.t.id}','na')">Not required</button><button class="sbtn" onclick="signOff('${m.id}','${i.t.id}','done')">Sign off</button></div>`).join('') + '</div>').join('');
 }
 async function removeSponsor(memberId) {
   const m = P(memberId);
@@ -1460,24 +1542,32 @@ async function setSponsorRole(id, on) {
 }
 
 function drawUsers() {
-  const base = me.base_id;
+  const global = hasRole('global');
+  const base = global ? (ui.usersBase || me.base_id) : me.base_id;
   const reqs = S.role_requests.filter(r => r.status === 'pending' && (r.base_id === base || hasRole('global')));
   const ub = el('ubadge'); ub.textContent = reqs.length; ub.classList.toggle('on', reqs.length > 0);
   const offs = S.offices.filter(o => o.base_id === base).sort(sortByName);
   let h = '';
   if (reqs.length) h += '<div class="dlbl" style="margin-top:4px">Role requests</div>' + reqs.map(roleReqCard).join('');
   const users = S.profiles.filter(p => p.base_id === base).sort(sortByName);
+  if (global) {
+    const counts = {}; S.profiles.forEach(p => { if (p.base_id) counts[p.base_id] = (counts[p.base_id] || 0) + 1; });
+    h += `<label class="fl" for="ub-pick" style="margin-top:4px">Base (global admin)</label><select class="fs" id="ub-pick" onchange="ui.usersBase=this.value;ui.roleEdit=null;drawUsers()">${S.bases.slice().sort(sortByName).map(b => opt(b.id, b.name + ' (' + (counts[b.id] || 0) + ')', b.id === base)).join('')}</select>`;
+  }
   h += '<div class="dlbl" style="margin-top:8px">People</div>';
+  if (!users.length) h += emp('ti-users', 'No personnel are registered at ' + baseName(base) + '.');
   h += users.map(p => {
     const pills = ROLE_ORDER.filter(r => p.roles.includes(r)).map(r => pill('pgy', ROLE_META[r].n)).join('');
     const off = p.office_id ? O(p.office_id) : null;
     const st = p.status === 'pending' ? pill('pa', 'Pending') : p.status === 'returned' ? pill('pr', 'Sent back') : '';
-    let card = `<div class="card"><div class="row">${avatar(p)}<div style="flex:1"><div class="tn">${esc(p.name)}</div><div class="ts">${esc(p.unit || '')}${off ? ' · ' + esc(off.name) : ''}</div></div>${st}</div><div class="chips" style="margin-top:9px">${pills}</div>`;
+    let card = `<div class="card"><div class="row">${avatar(p)}<div style="flex:1"><div class="tn">${esc(p.name)}</div><div class="ts">${esc(p.unit || 'No unit')}${off ? ' · ' + esc(off.name) : ''}${p.roles.includes('css') ? ' · CSS for ' + esc(p.unit || '?') : ''}</div></div>${st}</div><div class="chips" style="margin-top:9px">${pills}</div>`;
     if (ui.roleEdit === p.id) {
       card += '<div class="af" style="margin-top:11px"><h4>Roles</h4>' + ROLE_ORDER.map(r => {
         const lock = (r === 'mpf' || r === 'global') && !hasRole('global');
         return `<label class="cbx"><input type="checkbox" id="re-${r}"${p.roles.includes(r) ? ' checked' : ''}${lock || (p.id === me.id && r === 'mpf') ? ' disabled' : ''}> ${esc(ROLE_META[r].n)}${lock ? ' (global admin only)' : ''}</label>`;
-      }).join('') + `<label class="fl" for="re-office">Office, for workers and leads</label><select class="fs" id="re-office">${opt('', 'None', !p.office_id)}${offs.map(o => opt(o.id, o.name, p.office_id === o.id)).join('')}</select><div class="brow"><button class="pbtn bgreen" onclick="saveRoles('${p.id}')">Save</button><button class="ibtn" onclick="ui.roleEdit=null;drawUsers()">Cancel</button></div></div>`;
+      }).join('') + `<label class="fl" for="re-unit">Unit (squadron)</label><input class="fi" id="re-unit" value="${esc(p.unit || '')}" placeholder="731 AMS"><div class="fhint">A Squadron CSS can act only on personnel in this unit.</div><label class="fl" for="re-office">Office, for workers and leads</label><select class="fs" id="re-office">${opt('', 'None', !p.office_id)}${offs.map(o => opt(o.id, o.name, p.office_id === o.id)).join('')}</select><div class="brow"><button class="pbtn bgreen" onclick="saveRoles('${p.id}')">Save</button><button class="ibtn" onclick="ui.roleEdit=null;drawUsers()">Cancel</button></div></div>`;
+    } else if (p.status === 'pending') {
+      card += `<div class="ts" style="margin-top:8px">Awaiting approval. Approve the profile to assign roles.</div><div class="brow" style="margin-top:10px"><button class="sbtn" style="flex:1" onclick="approveProfile('${p.id}')">Approve and unlock</button><button class="ibtn" onclick="tab('prof')">Review in Profiles</button></div>`;
     } else if (p.status === 'active') {
       const sp = p.sponsor_id ? P(p.sponsor_id) : null;
       if (p.roles.includes('member')) card += `<div class="ts" style="margin-top:8px"><i class="ti ti-friends" aria-hidden="true"></i> Sponsor: ${esc(sp ? sp.name : 'none assigned')}</div>`;
@@ -1505,7 +1595,7 @@ async function decideRole(id, yes) {
 }
 // Sponsors: anyone with the Sponsor role at this base, or at the member's gaining base.
 function sponsorCandidates(p) {
-  return S.profiles.filter(s => s.id !== p.id && s.status === 'active' && s.roles.includes('sponsor') && (s.base_id === me.base_id || (p.gaining_base && s.base_id === p.gaining_base))).sort(sortByName);
+  return S.profiles.filter(s => s.id !== p.id && s.status === 'active' && s.roles.includes('sponsor') && (s.base_id === me.base_id || (p.gaining_base && s.base_id === p.gaining_base)) && (role !== 'css' || inMySquadron(s))).sort(sortByName);
 }
 function sponsorPicker(p) {
   if (!p.roles.includes('member')) return '';
@@ -1517,8 +1607,9 @@ function sponsorPicker(p) {
 async function saveRoles(id) {
   const p = P(id), roles = ROLE_ORDER.filter(r => checked('re-' + r) || (el('re-' + r) && el('re-' + r).disabled && p.roles.includes(r)));
   if (!roles.length) { toast('Pick at least one role.', 'err'); return; }
-  const office = val('re-office') || null;
-  const patch = { roles, office_id: office };
+  const office = val('re-office') || null, unit = val('re-unit').trim() || null;
+  if (roles.includes('css') && !unit) { toast('A Squadron CSS needs a unit. Enter the squadron they support.', 'err'); return; }
+  const patch = { roles, office_id: office, unit };
   const spEl = el('re-sp'), newSp = spEl ? (spEl.value || null) : p.sponsor_id;
   const spChanged = spEl && newSp !== (p.sponsor_id || null);
   if (spChanged) patch.sponsor_id = newSp;
@@ -1798,12 +1889,14 @@ const ROLE_GUIDE = {
     ]
   },
   css: {
-    purpose: 'Serve as the squadron sponsorship monitor: designate sponsors and assign them to members.',
-    can: ['View members leaving or arriving at your base, filtered to your squadron', 'Assign, change or remove a member’s sponsor', 'Designate or remove the Sponsor role for personnel at your base'],
-    cannot: ['Grant any role other than Sponsor', 'View members’ tasks or documents', 'Sign off tasks'],
+    purpose: 'Serve as the squadron sponsorship monitor and maintain your squadron’s own out-processing and in-processing tasks.',
+    can: ['View members leaving your squadron, and members arriving with your squadron as their gaining unit', 'Assign, change or remove a member’s sponsor', 'Designate or remove the Sponsor role for personnel in your squadron', 'Add squadron-specific out-processing and in-processing tasks', 'Sign off your squadron’s tasks'],
+    cannot: ['View or act on personnel outside your squadron', 'Grant any role other than Sponsor', 'Edit or remove base checklist tasks. The MPF maintains these', 'Sign off tasks owned by base offices'],
     how: [
       ['Designate sponsors', 'Open Sponsors and switch on each person approved to sponsor.'],
       ['Assign a sponsor', 'Open Needs sponsor, select a sponsor for the member and select Assign. Both parties are notified. Assign sponsors promptly after assignment notification so contact is made before the member departs.'],
+      ['Add a squadron task', 'Open Checklist, choose Out-processing or In-processing and select Add squadron task. Out-processing tasks reach members of your unit; in-processing tasks reach members whose gaining unit is your unit. Tasks appear in addition to the base checklist.'],
+      ['Sign off squadron tasks', 'Open Sign off. Members who report their part complete appear with Ready. Verify the requirement and select Sign off.'],
       ['Select an appropriate sponsor', 'Where possible, select a sponsor of similar grade and family circumstances who will remain at the base through the member’s arrival.']
     ]
   },

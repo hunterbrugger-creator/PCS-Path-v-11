@@ -168,7 +168,7 @@
     var T = dayFromToday;
     var now = new Date();
     function ts(daysAgo, h, m) { var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, h || 9, m || 0); return d.toISOString(); }
-    var db = { version: 5, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
+    var db = { version: 6, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
 
     db.bases = [
       { id: 'mildenhall', name: 'RAF Mildenhall', country: 'UK', live: true },
@@ -182,7 +182,10 @@
     var mil = starter('mildenhall', { prefix: 'mil', country: 'UK' });
     var ram = starter('ramstein', { prefix: 'ram', country: 'Germany', inOnly: true });
     db.offices = mil.offices.concat(ram.offices);
-    db.tasks = mil.tasks.concat(ram.tasks);
+    db.tasks = mil.tasks.concat(ram.tasks).concat([
+      { id: 'sq-o1', base_id: 'mildenhall', dir: 'out', unit: '100 LRS', name: '100 LRS squadron out-processing brief', descr: 'Attend the squadron out-processing brief with the 100 LRS CSS. Bring your orders and a printed checklist. Covers squadron final out, equipment turn-in and the sponsorship hand-over.', office_name: '100 LRS CSS', loc: 'Bldg 554, Rm 106', hours: '0800-1530 Monday to Friday', phone: '238-5450', office_id: null, offset_days: 20, tag: null, carry: false, triggers_handoff: false, sort: 900 },
+      { id: 'sq-i1', base_id: 'mildenhall', dir: 'in', unit: '100 LRS', name: '100 LRS newcomer squadron brief', descr: 'Report to the 100 LRS CSS for the squadron newcomer brief, section assignment and introduction to squadron leadership.', office_name: '100 LRS CSS', loc: 'Bldg 554, Rm 106', hours: '0800-1530 Monday to Friday', phone: '238-5450', office_id: null, offset_days: 2, tag: null, carry: false, triggers_handoff: false, sort: 901 }
+    ]);
     db.reminder_rules = mil.rules.concat(ram.rules);
     db.tips = mil.tips.concat(GLOBAL_TIPS.map(function (t, i) { return Object.assign({ id: 'glob-tip-' + i, base_id: null, author_id: null, created_at: ts(30) }, t); }));
 
@@ -207,7 +210,7 @@
       P({ id: 'u-walker', name: 'SSgt Walker, Tom', gaining_base: 'ramstein', depart: T(51), rnltd: T(66), flags: { fam: true, pov: true } }),
       P({ id: 'u-doyle', name: 'SSgt Doyle, Sam', roles: ['sponsor'], dir: 'none' }),
       P({ id: 'u-morris', name: 'TSgt Morris, Kelly', base_id: 'kadena', unit: '100 ARW', gaining_base: 'mildenhall', depart: T(-12), rnltd: T(-4), handoff: 'complete', sponsor_id: 'u-doyle' }),
-      P({ id: 'u-lee', name: 'A1C Lee, Ben', base_id: 'travis', unit: '100 LRS', gaining_base: 'mildenhall', depart: T(4), rnltd: T(12), move_type: 'CONUS to OCONUS', handoff: 'complete' }),
+      P({ id: 'u-lee', name: 'A1C Lee, Ben', base_id: 'travis', unit: '60 LRS', gaining_unit: '100 LRS', gaining_base: 'mildenhall', depart: T(4), rnltd: T(12), move_type: 'CONUS to OCONUS', handoff: 'complete' }),
       P({ id: 'u-park', name: 'SSgt Park, Hana', base_id: 'aviano', unit: '100 MXS', gaining_base: 'mildenhall', depart: T(20), rnltd: T(30) }),
       P({ id: 'u-green', name: 'MSgt Green, Tara', base_id: 'yokota', unit: '374 FSS' })
     ];

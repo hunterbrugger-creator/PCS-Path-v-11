@@ -63,6 +63,16 @@ Run [`supabase/update-4.sql`](supabase/update-4.sql) the same way. It:
   button or from "Can't sign in? Get help". Global admins answer in the
   **Support** tab, and can send a password reset link from there.
 
+## 2e. Squadron checklists
+
+Run [`supabase/update-5.sql`](supabase/update-5.sql) the same way. Each squadron's
+CSS can then add tasks that only their squadron sees, in addition to the base
+checklist. Out-processing tasks reach members of the unit, and in-processing
+tasks reach members whose gaining unit is that unit. The CSS signs these off.
+
+Each Squadron CSS is tied to one squadron, the unit on their profile, which the
+MPF sets in Users. A CSS can see and act only on members of that squadron.
+
 ## 3. Turn on sign-in
 
 1. Open **Authentication** → **URL Configuration**.

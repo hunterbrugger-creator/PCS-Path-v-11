@@ -211,6 +211,7 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 <div class="shell">
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <button class="fab" id="fab" aria-label="Help, feedback and role guides" onclick="openHelp()"><i class="ti ti-help" aria-hidden="true"></i></button>
+<div class="offbar" id="demobar" style="background:#EEEDFE;color:#3C3489"><i class="ti ti-flask" style="font-size:14px" aria-hidden="true"></i><span>Demo mode: example data only. <a href="./" style="color:inherit;font-weight:700">Open the real app</a></span></div>
 <div class="offbar" id="offbar"><i class="ti ti-wifi-off" style="font-size:14px" aria-hidden="true"></i><span>Offline. Showing your saved data. Changes sync when you reconnect.</span></div>
 
 <div id="s-boot" class="scr on"><div class="boot" id="bootmsg"><i class="ti ti-loader-2" aria-hidden="true"></i>Loading PCS Path</div></div>
@@ -258,7 +259,7 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 <select class="fs" id="su-dir" onchange="suDirChanged()"><option value="out">Out-processing, I am leaving this base</option><option value="in">In-processing, I just arrived here</option><option value="both">Both, I am mid-move</option><option value="none">None of the above, I am not moving (staff or sponsor)</option></select>
 <div id="su-nonemsg" class="card soft" style="display:none"><div class="ts" style="margin:0;line-height:1.55">No checklist or dates needed. Your MPF approves your account and gives you your job in the app, such as office worker, sponsor or squadron CSS. If you get orders later, change this in your Profile.</div></div>
 <div id="su-movewrap">
-<div id="su-gainwrap"><label class="fl" for="su-gain">Gaining base</label><select class="fs" id="su-gain"></select></div>
+<div id="su-gainwrap"><label class="fl" for="su-gain">Gaining base</label><select class="fs" id="su-gain"></select><label class="fl" for="su-gunit">Gaining unit, if known</label><input class="fi" id="su-gunit" placeholder="86 LRS"><div class="fhint">Squadrons can add their own in-processing tasks. Your gaining unit lets them reach you.</div></div>
 <div class="g2">
 <div id="su-depwrap"><label class="fl" for="su-dep">Departure date</label><input class="fi" id="su-dep" type="date"></div>
 <div><label class="fl" for="su-rnltd">RNLTD</label><input class="fi" id="su-rnltd" type="date"></div>
@@ -407,14 +408,18 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 <div id="s-css" class="scr">
 <div class="hdr hs"><h2 id="cs-name">Squadron CSS</h2><p id="cs-sub"></p></div>
 <div class="nav">
-<button class="nb" id="xn-need" onclick="tab('need')"><i class="ti ti-user-question" aria-hidden="true"></i>Needs sponsor<span class="dotb" id="xbadge">0</span></button>
+<button class="nb" id="xn-need" onclick="tab('need')"><i class="ti ti-user-question" aria-hidden="true"></i>To assign<span class="dotb" id="xbadge">0</span></button>
 <button class="nb" id="xn-all" onclick="tab('all')"><i class="ti ti-friends" aria-hidden="true"></i>Assigned</button>
 <button class="nb" id="xn-people" onclick="tab('people')"><i class="ti ti-users" aria-hidden="true"></i>Sponsors</button>
+<button class="nb" id="xn-list" onclick="tab('list')"><i class="ti ti-list-details" aria-hidden="true"></i>Checklist</button>
+<button class="nb" id="xn-so" onclick="tab('so')"><i class="ti ti-clipboard-check" aria-hidden="true"></i>Sign off<span class="dotb" id="xsobadge">0</span></button>
 <button class="nb" onclick="switchRole()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Switch</button>
 </div>
 <div id="xt-need" class="tab"><div class="pad" id="xneed"></div></div>
 <div id="xt-all" class="tab"><div class="pad" id="xall"></div></div>
 <div id="xt-people" class="tab"><div class="pad" id="xpeople"></div></div>
+<div id="xt-list" class="tab"><div class="pad" id="xlist"></div></div>
+<div id="xt-so" class="tab"><div class="pad" id="xso"></div></div>
 </div>
 
 <div id="s-mpf" class="scr">
@@ -484,9 +489,9 @@ details.faq p{font-size:12.5px;color:var(--t2);line-height:1.6;margin-top:7px}
 </div>
 
 </div>
-<script src="config.js?v=17"></script>
-<script src="seed.js?v=17"></script>
-<script src="store.js?v=17"></script>
-<script src="app.js?v=17"></script>
+<script src="config.js?v=19"></script>
+<script src="seed.js?v=19"></script>
+<script src="store.js?v=19"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

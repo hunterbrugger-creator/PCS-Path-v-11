@@ -40,7 +40,7 @@
     if (this.db) return;
     var raw = lsGet(LKEY);
     if (raw) { try { this.db = JSON.parse(raw); } catch (e) { this.db = null; } }
-    if (!this.db || this.db.version !== 5) { this.db = window.PCS_SEED.build(); this._save(); }
+    if (!this.db || this.db.version !== 6) { this.db = window.PCS_SEED.build(); this._save(); }
   };
   Local.prototype._save = function () { lsSet(LKEY, JSON.stringify(this.db)); };
   Local.prototype.reset = function () { lsDel(LKEY); lsDel(LUID); this.db = null; this._load(); };
@@ -52,7 +52,7 @@
   Local.prototype.signIn = async function (email, pass) {
     this._load();
     var a = this.db.auth.find(function (x) { return x.email === email; });
-    if (!a) throw new Error('No account found for that email. Create one to get started.');
+    if (!a) throw new Error('No demo account uses that email. You are in demo mode, which has its own example accounts. To use your real account, select "Open the real app" at the top of the screen.');
     if (a.pass !== pass) throw new Error('Email or password is wrong.');
     lsSet(LUID, a.id);
     return a.id;
