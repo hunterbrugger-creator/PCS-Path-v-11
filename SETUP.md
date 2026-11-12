@@ -29,6 +29,21 @@ Plan on about 20 minutes for the steps below.
 This creates every table, the security rules that decide who can see and change
 what, and a starter list of bases. RAF Mildenhall is the only base switched on.
 
+## 2b. Turn on forms and file uploads
+
+1. In **SQL Editor**, open a new query. Use a tab with the **SQL** icon, not a Logs tab.
+2. Paste all of [`supabase/files.sql`](supabase/files.sql) and click **Run**.
+
+This creates two file stores:
+
+- **forms** holds blank forms the MPF or office leads attach to tasks.
+  Anyone with the link can open these, so they must never contain personal information.
+- **uploads** holds files members attach to their own tasks. Only the member,
+  and staff at their losing or gaining base, can open them.
+
+Until you run it, everything else in the app keeps working. Uploading shows
+"File storage is not set up yet".
+
 ## 3. Turn on sign-in
 
 1. Open **Authentication** → **URL Configuration**.
@@ -128,7 +143,7 @@ app does not ask for DoD ID numbers or SSNs, so don't add fields for them.
 
 - **Reminders come only inside the app.** They are created when a member opens it.
   Email or push reminders would need a scheduled Supabase Edge Function.
-- **No document uploads yet.** The Documents tab is a checklist. Real uploads
-  would use Supabase Storage.
+- **Uploads are not scanned for viruses**, and nothing stops someone uploading
+  personal information. During the pilot, tell people not to upload SSNs or medical details.
 - **Live updates arrive when you reopen or switch back to the app**, not instantly.
   Supabase Realtime could make them instant.

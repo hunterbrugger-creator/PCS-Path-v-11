@@ -174,7 +174,7 @@ const riskRank = { high: 0, medium: 1, low: 2 };
 // Writes: save through DB, then update the snapshot
 // ---------------------------------------------------------------------
 const NO_ID = { task_progress: true };
-const HAS_CREATED = { tips: 1, messages: 1, notifications: 1, appt_requests: 1, role_requests: 1, sponsor_prep: 1 };
+const HAS_CREATED = { tips: 1, messages: 1, notifications: 1, appt_requests: 1, role_requests: 1, sponsor_prep: 1, task_files: 1, member_files: 1 };
 function prep(table, r) {
   r = Object.assign({}, r);
   if (!NO_ID[table] && !r.id) r.id = DB.newId();
@@ -271,12 +271,24 @@ function setOnline(v) { el('offbar').classList.toggle('on', !v); }
 
 function renderLoginExtras() {
   const mb = el('modebar'), dl = el('demolist');
-  if (DB.mode !== 'demo') { mb.className = 'modebar'; dl.innerHTML = ''; return; }
+  if (DB.mode !== 'demo') {
+    mb.className = 'modebar';
+    dl.innerHTML = '<div style="text-align:center"><a class="lbtn" href="?demo" style="text-decoration:none"><i class="ti ti-flask" aria-hidden="true"></i> Try the demo with example people</a></div>';
+    return;
+  }
+  const live = !!(window.PCS_CONFIG && window.PCS_CONFIG.supabaseUrl);
   mb.className = 'modebar on';
-  mb.innerHTML = '<i class="ti ti-flask" style="font-size:14px" aria-hidden="true"></i><span>Demo mode. Data is saved in this browser only.</span>';
+  mb.innerHTML = '<i class="ti ti-flask" style="font-size:14px" aria-hidden="true"></i><span>Demo mode. Example data, saved in this browser only.' + (live ? ' <a href="./" style="color:inherit">Go to the real app</a>' : '') + '</span>';
   dl.innerHTML = '<div class="slbl" style="padding-left:0">Demo accounts &middot; password: demo</div><div class="stack" style="margin-top:8px">' +
     window.PCS_SEED.demoAccounts.map(a => `<button type="button" class="acct" onclick="quick('${esc(a.email)}')"><i class="ti ${a.i}" style="font-size:17px;color:${a.c}" aria-hidden="true"></i><span><span class="an">${esc(a.n)}</span><span class="ad">${esc(a.d)}</span></span></button>`).join('') +
     '</div><button type="button" class="ibtn" style="width:100%;margin-top:9px" onclick="resetDemo()">Reset demo data</button>';
+}
+function togglePw(id, btn) {
+  const inp = el(id), showing = inp.type === 'text';
+  inp.type = showing ? 'password' : 'text';
+  btn.setAttribute('aria-pressed', showing ? 'false' : 'true');
+  btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+  btn.innerHTML = `<i class="ti ${showing ? 'ti-eye' : 'ti-eye-off'}" aria-hidden="true"></i>`;
 }
 function quick(email) { el('lg-email').value = email; el('lg-pass').value = 'demo'; doLogin(); }
 async function resetDemo() {
@@ -341,6 +353,7 @@ function suValidate(step) {
     if (!val('su-name').trim()) return 'Add your rank and name to continue.';
     if (!/^\S+@\S+\.\S+$/.test(val('su-email').trim())) return 'Add a valid work email to continue.';
     if (val('su-pass').length < 8) return 'Choose a password of at least 8 characters.';
+    if (val('su-pass2') !== val('su-pass')) return 'The two passwords do not match. Tap the eye to check them.';
     if (!val('su-base')) return 'Choose your current base.';
   }
   if (step === 2) return moveError(val('su-dir'), val('su-dep'), val('su-rnltd'));
@@ -370,7 +383,7 @@ async function submitProfile() {
   busy('su-go', true, 'Submitting');
   try {
     const r = await DB.signUp(email, val('su-pass'), meta);
-    el('su-pass').value = '';
+    el('su-pass').value = ''; el('su-pass2').value = '';
     if (r.needsConfirm) {
       show('s-login'); el('lg-email').value = email;
       toast('Almost done. Check your email and tap the confirmation link, then sign in.');
@@ -545,7 +558,88 @@ function taskCard(p, t, locked) {
     else btns += `<button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" onclick="markMine('${t.id}')">I have done my part</button>`;
     if (off) btns += appt ? `<button class="ibtn" disabled>${appt.status === 'confirmed' ? 'Appointment booked' : 'Appointment requested'}</button>` : `<button class="ibtn" onclick="reqAppt('${t.id}')">Request appointment</button>`;
   }
-  return `<div class="card${fin ? ' dim' : ''}"><button class="trow" aria-expanded="${open}" onclick="tapTask('${t.id}')">${mark}<span class="tb"><span class="tn">${esc(t.name)}</span><span class="ts">${esc(t.office_name || '')}${t.loc ? ' · ' + esc(t.loc) : ''}</span></span>${badge}</button><div class="tdet${open ? ' on' : ''}"><div class="dlbl">What this is</div><div class="dtxt">${esc(t.descr)}</div><div class="dmeta">${rows}</div>${btns ? '<div class="brow">' + btns + '</div>' : ''}</div></div>`;
+  const nf = formsFor(t.id).length + myFilesFor(p.id, t.id).length;
+  return `<div class="card${fin ? ' dim' : ''}"><button class="trow" aria-expanded="${open}" onclick="tapTask('${t.id}')">${mark}<span class="tb"><span class="tn">${esc(t.name)}</span><span class="ts">${esc(t.office_name || '')}${t.loc ? ' · ' + esc(t.loc) : ''}${nf ? ' · <i class="ti ti-paperclip" aria-hidden="true"></i>' + nf + '<span class="sr"> files</span>' : ''}</span></span>${badge}</button><div class="tdet${open ? ' on' : ''}"><div class="dlbl">What this is</div><div class="dtxt">${esc(t.descr)}</div><div class="dmeta">${rows}</div>${memberFilesBlock(p, t, locked)}${btns ? '<div class="brow">' + btns + '</div>' : ''}</div></div>`;
+}
+
+// ---------------------------------------------------------------------
+// Files: blank forms on tasks (bucket "forms") and member uploads ("uploads")
+// ---------------------------------------------------------------------
+const MAX_FILE = 10 * 1024 * 1024;
+const FILE_ACCEPT = '.pdf,.png,.jpg,.jpeg,.heic,.doc,.docx,application/pdf,image/*';
+const formsFor = taskId => S.task_files.filter(f => f.task_id === taskId).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+const myFilesFor = (memberId, taskId) => S.member_files.filter(f => f.member_id === memberId && (!taskId || f.task_id === taskId)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+function safeName(n) { return String(n || 'file').replace(/[^A-Za-z0-9._-]+/g, '_').slice(-80); }
+function fmtSize(b) { if (!b && b !== 0) return ''; return b < 1024 * 1024 ? Math.max(1, Math.round(b / 1024)) + ' KB' : (b / 1024 / 1024).toFixed(1) + ' MB'; }
+function fileIcon(name) { return /\.pdf$/i.test(name) ? 'ti-file-type-pdf' : /\.(png|jpe?g|heic)$/i.test(name) ? 'ti-photo' : /\.docx?$/i.test(name) ? 'ti-file-type-doc' : 'ti-file'; }
+function fileLine(f, openFn, removeFn) {
+  return `<div class="fileln"><i class="ti ${fileIcon(f.name)} ft" aria-hidden="true"></i><span class="fn">${esc(f.name)} <span class="fz">${esc(fmtSize(f.size))}</span></span><button class="ibtn" onclick="${openFn}('${f.id}')">Open</button>${removeFn ? `<button class="ibtn dg" aria-label="Remove ${esc(f.name)}" onclick="${removeFn}('${f.id}')"><i class="ti ti-trash" aria-hidden="true"></i></button>` : ''}</div>`;
+}
+function uploadButton(label, handler, arg) {
+  return `<button class="ibtn" onclick="this.nextElementSibling.click()"><i class="ti ti-upload" aria-hidden="true"></i> ${esc(label)}</button><input type="file" accept="${FILE_ACCEPT}" hidden onchange="${handler}('${arg}',this)">`;
+}
+function memberFilesBlock(p, t, locked) {
+  const forms = formsFor(t.id), mine = myFilesFor(p.id, t.id), s = stateOf(p, t);
+  let h = '';
+  if (forms.length) h += `<div class="dlbl">Forms for this task</div><div class="fbox">${forms.map(f => fileLine(f, 'openForm')).join('')}</div>`;
+  if (mine.length) h += `<div class="dlbl">Your files</div><div class="fbox">${mine.map(f => fileLine(f, 'openUpload', isFinal(s) ? null : 'removeUpload')).join('')}</div>`;
+  if (!locked && !isFinal(s)) h += `<div class="brow" style="margin-bottom:12px">${uploadButton('Upload a file', 'uploadMine', t.id)}<span class="ts" style="margin:0;flex:1">PDF, photo or Word, up to 10 MB. Pilot: no SSNs or medical details.</span></div>`;
+  return h;
+}
+function uploadsChips(memberId, taskId) {
+  const files = myFilesFor(memberId, taskId);
+  return files.length ? `<div class="chips" style="margin-top:6px">${files.map(f => `<button class="chipbtn" onclick="openUpload('${f.id}')"><i class="ti ti-paperclip" aria-hidden="true"></i><span>${esc(f.name)}</span></button>`).join('')}</div>` : '';
+}
+async function openFileUrl(bucket, path) {
+  const w = window.open('', '_blank');
+  try {
+    const url = await DB.fileUrl(bucket, path);
+    if (w) w.location.href = url; else location.href = url;
+  } catch (e) { if (w) w.close(); toast('Could not open that file. ' + e.message, 'err'); }
+}
+function openForm(id) { const f = S.task_files.find(x => x.id === id); if (f) openFileUrl('forms', f.path); }
+function openUpload(id) { const f = S.member_files.find(x => x.id === id); if (f) openFileUrl('uploads', f.path); }
+function checkFile(f) {
+  if (!f) return false;
+  if (f.size > MAX_FILE) { toast('That file is too big. The limit is 10 MB.', 'err'); return false; }
+  if (navigator.onLine === false) { toast('Connect to the internet to upload files.', 'err'); return false; }
+  return true;
+}
+async function uploadMine(taskId, input) {
+  const f = input.files[0]; input.value = '';
+  if (!checkFile(f)) return;
+  const t = TK(taskId), id = DB.newId(), path = me.id + '/' + taskId + '/' + id + '-' + safeName(f.name);
+  toast('Uploading ' + f.name);
+  try { await DB.uploadFile('uploads', path, f); } catch (e) { toast('Upload failed. ' + e.message, 'err'); return; }
+  if (await ins('member_files', { id, member_id: me.id, task_id: taskId, name: f.name, path, size: f.size })) {
+    const off = t.office_id ? O(t.office_id) : null;
+    toast('Uploaded. ' + (off ? off.name : 'Your counselor') + ' can see it. Tap "I have done my part" when you are ready.');
+    ui.open[taskId] = true; drawRole();
+  }
+}
+async function removeUpload(id) {
+  const f = S.member_files.find(x => x.id === id);
+  if (!f || !window.confirm('Delete "' + f.name + '"? This cannot be undone.')) return;
+  try { await DB.removeFile('uploads', f.path); } catch (e) { toast('Could not delete the file. ' + e.message, 'err'); return; }
+  if (await del('member_files', { id })) { toast('File deleted.'); drawRole(); }
+}
+async function attachForm(taskId, input) {
+  const f = input.files[0]; input.value = '';
+  if (!checkFile(f)) return;
+  const t = TK(taskId), id = DB.newId(), path = t.base_id + '/' + taskId + '/' + id + '-' + safeName(f.name);
+  toast('Uploading ' + f.name);
+  try { await DB.uploadFile('forms', path, f); } catch (e) { toast('Upload failed. ' + e.message, 'err'); return; }
+  if (await ins('task_files', { id, task_id: taskId, name: f.name, path, size: f.size, uploaded_by: me.id })) { toast('Form attached. Members see it on "' + t.name + '".'); drawRole(); }
+}
+async function removeForm(id) {
+  const f = S.task_files.find(x => x.id === id);
+  if (!f || !window.confirm('Remove the form "' + f.name + '" from this task for everyone?')) return;
+  try { await DB.removeFile('forms', f.path); } catch (e) { toast('Could not delete the file. ' + e.message, 'err'); return; }
+  if (await del('task_files', { id })) { toast('Form removed.'); drawRole(); }
+}
+function formsManager(t) {
+  const forms = formsFor(t.id);
+  return `<div class="dlbl" style="margin-top:11px">Blank forms members can open</div>${forms.length ? `<div class="fbox">${forms.map(f => fileLine(f, 'openForm', 'removeForm')).join('')}</div>` : ''}<div class="brow">${uploadButton(forms.length ? 'Attach another form' : 'Attach a form', 'attachForm', t.id)}<span class="ts" style="margin:0;flex:1">Blank forms only. Anyone with the link can open them.</span></div>`;
 }
 function tapTask(id) { ui.open[id] = !ui.open[id]; drawTaskList(); }
 async function markMine(taskId) {
@@ -634,7 +728,11 @@ function drawDocs() {
   ];
   const carry = tasksFor(p, 'out').filter(t => t.carry).map(t => ['task-' + t.id, t.name, 'Hand carry to ' + baseName(p.gaining_base)]);
   const row = x => `<div class="rule"><div style="flex:1"><div class="rt">${esc(x[1])}</div><div class="ts">${esc(x[2])}</div></div>${toggle(`onchange="flipDoc('${esc(x[0])}',this.checked)"`, d[x[0]], x[1])}</div>`;
-  el('mdocs').innerHTML = `<div class="card"><div class="tn">Have these ready</div><div class="ts" style="margin-bottom:6px">Tick each one off as you get it.</div>${base.map(row).join('')}</div>` +
+  const files = myFilesFor(p.id);
+  const filesCard = `<div class="card"><div class="tn">Your uploaded files</div><div class="ts" style="margin-bottom:6px">Only you and the offices that sign you off can open these. Upload files from inside a task.</div>${files.length ? files.map(f => { const t = TK(f.task_id); return fileLine(Object.assign({}, f, { name: f.name + (t ? ' · ' + t.name : '') }), 'openUpload'); }).join('') : '<div class="ts">Nothing uploaded yet.</div>'}</div>`;
+  const forms = S.task_files.filter(f => { const t = TK(f.task_id); return t && (t.base_id === p.base_id || t.base_id === inBase(p)) && (!t.tag || (p.flags || {})[t.tag]); });
+  const formsCard = forms.length ? `<div class="card"><div class="tn">Forms you can open</div><div class="ts" style="margin-bottom:6px">Blank forms your offices attached to tasks.</div>${forms.map(f => fileLine(Object.assign({}, f, { name: f.name + ' · ' + (TK(f.task_id) || {}).name }), 'openForm')).join('')}</div>` : '';
+  el('mdocs').innerHTML = formsCard + filesCard + `<div class="card"><div class="tn">Have these ready</div><div class="ts" style="margin-bottom:6px">Tick each one off as you get it.</div>${base.map(row).join('')}</div>` +
     (carry.length ? `<div class="card"><div class="tn">Records that travel with you</div><div class="ts" style="margin-bottom:6px">Collect these before you leave ${esc(baseName(p.base_id))}.</div>${carry.map(row).join('')}</div>` : '');
 }
 async function flipDoc(k, v) { const docs = Object.assign({}, me.docs, { [k]: v }); await upd('profiles', { id: me.id }, { docs }); }
@@ -812,7 +910,7 @@ function drawQueue(cid) {
   const q = queueFor(off.id);
   if (!q.length) { box.innerHTML = emp('ti-circle-check', 'Nobody is waiting on ' + off.name + '.'); return; }
   box.innerHTML = q.map(({ m, items }) => `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">${m.dir === 'in' || m.handoff === 'complete' ? 'RNLTD ' + esc(fmt(m.rnltd)) : 'Departs ' + esc(fmt(m.depart))}</div></div></div>` +
-    items.map(i => `<div class="frow"><div style="flex:1"><div style="font-size:12.5px;font-weight:600">${esc(i.t.name)}</div><div class="ts">${i.s === 'submitted' ? 'Member says their part is done' : i.due ? 'Due ' + esc(fmt(i.due)) : ''}</div></div>${i.s === 'submitted' ? pill('pa', 'Ready') : i.s === 'overdue' ? pill('pr', 'Overdue') : ''}</div><div class="brow" style="justify-content:flex-end;padding-bottom:4px"><button class="ibtn" onclick="signOff('${m.id}','${i.t.id}','na')">Not needed</button><button class="sbtn" onclick="signOff('${m.id}','${i.t.id}','done')">Sign off</button></div>`).join('') + '</div>').join('');
+    items.map(i => `<div class="frow"><div style="flex:1"><div style="font-size:12.5px;font-weight:600">${esc(i.t.name)}</div><div class="ts">${i.s === 'submitted' ? 'Member says their part is done' : i.due ? 'Due ' + esc(fmt(i.due)) : ''}</div>${uploadsChips(m.id, i.t.id)}</div>${i.s === 'submitted' ? pill('pa', 'Ready') : i.s === 'overdue' ? pill('pr', 'Overdue') : ''}</div><div class="brow" style="justify-content:flex-end;padding-bottom:4px"><button class="ibtn" onclick="signOff('${m.id}','${i.t.id}','na')">Not needed</button><button class="sbtn" onclick="signOff('${m.id}','${i.t.id}','done')">Sign off</button></div>`).join('') + '</div>').join('');
 }
 async function signOff(memberId, taskId, status) {
   const m = P(memberId), t = TK(taskId), off = myOffice();
@@ -910,7 +1008,12 @@ function drawOfficeForm() {
   const off = myOffice(), box = el('loffice');
   if (!off) { box.innerHTML = noOffice(); return; }
   const st = ['Open', 'At lunch', 'Long wait', 'Closed today'];
-  box.innerHTML = `<div class="card"><label class="fl" for="of-n">Office name</label><input class="fi" id="of-n" value="${esc(off.name)}"><label class="fl" for="of-b">Building</label><input class="fi" id="of-b" value="${esc(off.building || '')}"><label class="fl" for="of-p">Phone (DSN)</label><input class="fi" id="of-p" value="${esc(off.phone || '')}"><label class="fl" for="of-h">Hours</label><input class="fi" id="of-h" value="${esc(off.hours || '')}"><label class="fl" for="of-s">Current status</label><select class="fs" id="of-s">${st.map(s => opt(s, s, off.status === s)).join('')}</select><div class="fhint">Members see your hours, phone and any status other than Open on every task your office signs off.</div><button class="pbtn blead" onclick="saveOffice()">Save changes</button></div>`;
+  box.innerHTML = `<div class="card"><label class="fl" for="of-n">Office name</label><input class="fi" id="of-n" value="${esc(off.name)}"><label class="fl" for="of-b">Building</label><input class="fi" id="of-b" value="${esc(off.building || '')}"><label class="fl" for="of-p">Phone (DSN)</label><input class="fi" id="of-p" value="${esc(off.phone || '')}"><label class="fl" for="of-h">Hours</label><input class="fi" id="of-h" value="${esc(off.hours || '')}"><label class="fl" for="of-s">Current status</label><select class="fs" id="of-s">${st.map(s => opt(s, s, off.status === s)).join('')}</select><div class="fhint">Members see your hours, phone and any status other than Open on every task your office signs off.</div><button class="pbtn blead" onclick="saveOffice()">Save changes</button></div>` + officeFormsCards(off);
+}
+function officeFormsCards(off) {
+  const tasks = S.tasks.filter(t => t.office_id === off.id).sort((a, b) => a.dir.localeCompare(b.dir) || (a.sort - b.sort));
+  if (!tasks.length) return `<div class="card soft"><div class="ts" style="margin:0">No tasks on the master list are signed off by ${esc(off.name)} yet, so there is nowhere to attach forms. Ask your MPF to link tasks to this office.</div></div>`;
+  return `<div class="slbl" style="padding-left:0">Forms for your tasks</div>` + tasks.map(t => `<div class="card"><div class="tn">${esc(t.name)}</div><div class="ts">${t.dir === 'out' ? 'Out-processing' : 'In-processing'}</div>${formsManager(t)}</div>`).join('');
 }
 async function saveOffice() {
   const off = myOffice(), name = val('of-n').trim();
@@ -934,7 +1037,7 @@ function drawCounsel() {
   else {
     const open = tasksFor(m, 'out').map(t => ({ t, s: stateOf(m, t) })).filter(x => !isFinal(x.s)).sort((a, b) => (b.s === 'submitted') - (a.s === 'submitted'));
     el('cso').innerHTML = `<label class="fl" for="cso-pick">Member</label><select class="fs" id="cso-pick" onchange="ui.cso=this.value;drawCounsel()">${list.map(x => opt(x.id, x.name, x.id === m.id)).join('')}</select>` +
-      (open.length ? '<div class="card">' + open.map((x, i) => { const off = x.t.office_id ? O(x.t.office_id) : null; return `<div class="frow"${i === 0 ? ' style="border-top:none;padding-top:0"' : ''}><div style="flex:1"><div style="font-size:12.5px;font-weight:600">${esc(x.t.name)}</div><div class="ts">${x.s === 'submitted' ? 'Member says their part is done' : 'Due ' + esc(fmt(dueOf(m, x.t)))}${off ? ' · usually ' + esc(off.name) : ''}</div></div>${x.s === 'submitted' ? pill('pa', 'Ready') : x.s === 'overdue' ? pill('pr', 'Overdue') : ''}</div><div class="brow" style="justify-content:flex-end;padding-bottom:4px"><button class="ibtn" onclick="signOff('${m.id}','${x.t.id}','na')">Not needed</button><button class="sbtn" onclick="signOff('${m.id}','${x.t.id}','done')">Sign off</button></div>`; }).join('') + '</div>' : emp('ti-circle-check', m.name + ' has nothing left to sign.'));
+      (open.length ? '<div class="card">' + open.map((x, i) => { const off = x.t.office_id ? O(x.t.office_id) : null; return `<div class="frow"${i === 0 ? ' style="border-top:none;padding-top:0"' : ''}><div style="flex:1"><div style="font-size:12.5px;font-weight:600">${esc(x.t.name)}</div><div class="ts">${x.s === 'submitted' ? 'Member says their part is done' : 'Due ' + esc(fmt(dueOf(m, x.t)))}${off ? ' · usually ' + esc(off.name) : ''}</div>${uploadsChips(m.id, x.t.id)}</div>${x.s === 'submitted' ? pill('pa', 'Ready') : x.s === 'overdue' ? pill('pr', 'Overdue') : ''}</div><div class="brow" style="justify-content:flex-end;padding-bottom:4px"><button class="ibtn" onclick="signOff('${m.id}','${x.t.id}','na')">Not needed</button><button class="sbtn" onclick="signOff('${m.id}','${x.t.id}','done')">Sign off</button></div>`; }).join('') + '</div>' : emp('ti-circle-check', m.name + ' has nothing left to sign.'));
   }
   drawTipList('ctips', S.tips.filter(t => t.tier === 'counsel' && t.base_id === me.base_id), { tier: 'counsel', btn: 'bcoun', canRemove: true });
 }
@@ -991,7 +1094,7 @@ function drawMaster() {
     if (t.hours) meta += dmr('ti-clock', t.hours);
     if (t.phone) meta += dmr('ti-phone', 'DSN ' + t.phone);
     const due = ui.mdir === 'out' ? (t.offset_days === 0 ? 'Departure day' : t.offset_days + 'd before') : (t.offset_days === 0 ? 'Arrival day' : t.offset_days + 'd after');
-    return `<div class="card"><div class="row" style="margin-bottom:9px"><div style="flex:1"><div class="tn">${esc(t.name)}</div><div class="ts">${esc(t.office_name || '')}</div></div>${pill('pm', due)}</div>${flags ? `<div class="chips" style="margin-bottom:9px">${flags}</div>` : ''}<div class="dmeta">${meta}</div><div style="font-size:12.5px;color:var(--t2);line-height:1.6">${esc(t.descr)}</div><div class="brow" style="margin-top:11px"><button class="ibtn" onclick="ui.edit='${t.id}';drawMaster()">Edit</button><button class="ibtn dg" onclick="delMaster('${t.id}')">Remove</button></div></div>`;
+    return `<div class="card"><div class="row" style="margin-bottom:9px"><div style="flex:1"><div class="tn">${esc(t.name)}</div><div class="ts">${esc(t.office_name || '')}</div></div>${pill('pm', due)}</div>${flags ? `<div class="chips" style="margin-bottom:9px">${flags}</div>` : ''}<div class="dmeta">${meta}</div><div style="font-size:12.5px;color:var(--t2);line-height:1.6">${esc(t.descr)}</div>${formsManager(t)}<div class="brow" style="margin-top:11px"><button class="ibtn" onclick="ui.edit='${t.id}';drawMaster()">Edit</button><button class="ibtn dg" onclick="delMaster('${t.id}')">Remove</button></div></div>`;
   }).join('');
   if (all.length && !list.length) h += emp('ti-list', 'No ' + ui.mdir + '-processing tasks yet.');
   h += ui.edit === 'new' ? taskForm(null) : `<button class="pbtn bgreen" onclick="ui.edit='new';drawMaster()">Add task to master list</button>`;

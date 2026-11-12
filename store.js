@@ -8,11 +8,14 @@
 (function () {
   'use strict';
   var CFG = window.PCS_CONFIG || {};
-  var LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey);
+  // Adding ?demo to the address opens the demo even when a database is configured.
+  var FORCE_DEMO = /[?&]demo\b/.test(location.search);
+  var LIVE = !!(CFG.supabaseUrl && CFG.supabaseAnonKey) && !FORCE_DEMO;
   var SUPABASE_JS = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';
 
   var TABLES = ['bases', 'offices', 'profiles', 'tasks', 'task_progress', 'tips', 'messages',
-    'notifications', 'appt_requests', 'slots', 'role_requests', 'reminder_rules', 'sponsor_prep'];
+    'notifications', 'appt_requests', 'slots', 'role_requests', 'reminder_rules', 'sponsor_prep',
+    'task_files', 'member_files'];
 
   function newId() {
     if (window.crypto && crypto.randomUUID) { try { return crypto.randomUUID(); } catch (e) { /* insecure context */ } }
@@ -84,9 +87,39 @@
     TABLES.forEach(function (t) { out[t] = clone(db[t] || []); });
     return out;
   };
+  // Demo files live in localStorage as data URLs, so keep them small.
+  Local.prototype.uploadFile = async function (bucket, path, file) {
+    this._load();
+    if (file.size > 2.5 * 1024 * 1024) throw new Error('In demo mode files must be under 2.5 MB. The real app allows 10 MB.');
+    var data = await new Promise(function (res, rej) {
+      var r = new FileReader();
+      r.onload = function () { res(r.result); };
+      r.onerror = function () { rej(new Error('Could not read that file.')); };
+      r.readAsDataURL(file);
+    });
+    this.db.files = this.db.files || {};
+    var key = bucket + '/' + path;
+    this.db.files[key] = data;
+    try { localStorage.setItem(LKEY, JSON.stringify(this.db)); } catch (e) {
+      delete this.db.files[key];
+      throw new Error('This browser has no room left for demo files. Remove some or reset the demo.');
+    }
+  };
+  Local.prototype.fileUrl = async function (bucket, path) {
+    this._load();
+    var data = (this.db.files || {})[bucket + '/' + path];
+    if (!data) throw new Error('That file is no longer in this browser.');
+    var blob = await (await fetch(data)).blob();
+    return URL.createObjectURL(blob);
+  };
+  Local.prototype.removeFile = async function (bucket, path) {
+    this._load();
+    if (this.db.files) delete this.db.files[bucket + '/' + path];
+    this._save();
+  };
   Local.prototype.insert = async function (table, rows) {
     this._load();
-    var t = this.db[table];
+    var t = this.db[table] = this.db[table] || [];
     rows.forEach(function (r) { t.push(clone(r)); });
     this._save();
   };
@@ -102,18 +135,19 @@
   Local.prototype.upsert = async function (table, row, keys) {
     this._load();
     var m = {}; keys.forEach(function (k) { m[k] = row[k]; });
+    this.db[table] = this.db[table] || [];
     var ex = this.db[table].find(function (x) { return matches(x, m); });
     if (ex) Object.assign(ex, clone(row)); else this.db[table].push(clone(row));
     this._save();
   };
   Local.prototype.update = async function (table, match, patch) {
     this._load();
-    this.db[table].forEach(function (r) { if (matches(r, match)) Object.assign(r, clone(patch)); });
+    (this.db[table] || []).forEach(function (r) { if (matches(r, match)) Object.assign(r, clone(patch)); });
     this._save();
   };
   Local.prototype.remove = async function (table, match) {
     this._load();
-    this.db[table] = this.db[table].filter(function (r) { return !matches(r, match); });
+    this.db[table] = (this.db[table] || []).filter(function (r) { return !matches(r, match); });
     // Mirror "on delete cascade" for the one place the app relies on it.
     if (table === 'tasks' && match.id) {
       this.db.task_progress = this.db.task_progress.filter(function (r) { return r.task_id !== match.id; });
@@ -198,7 +232,10 @@
   Live.prototype._fetchAll = async function (table) {
     var all = [], from = 0, size = 1000;
     for (;;) {
-      var rows = err(await this.sb.from(table).select('*').range(from, from + size - 1));
+      var r = await this.sb.from(table).select('*').range(from, from + size - 1);
+      // A table that does not exist yet (an optional SQL step not run) reads as empty.
+      if (r.error && (r.error.code === 'PGRST205' || r.error.code === '42P01' || /does not exist|could not find the table/i.test(r.error.message))) return [];
+      var rows = err(r);
       all = all.concat(rows);
       if (rows.length < size) return all;
       from += size;
@@ -219,6 +256,27 @@
       if (c1 && isNetwork(e)) return c1;
       throw e;
     }
+  };
+  Live.prototype.uploadFile = async function (bucket, path, file) {
+    if (navigator.onLine === false) throw new Error('Connect to the internet to upload files.');
+    var r = await this.sb.storage.from(bucket).upload(path, file, { contentType: file.type || undefined, upsert: false });
+    if (r.error) {
+      var m = r.error.message;
+      if (/bucket not found/i.test(m)) m = 'File storage is not set up yet. Run supabase/files.sql (SETUP.md step 2b).';
+      if (/mime type|not supported/i.test(m)) m = 'That type of file is not allowed. Use a PDF, photo or Word document.';
+      if (/exceeded|too large|payload/i.test(m)) m = 'That file is too big. The limit is 10 MB.';
+      throw new Error(m);
+    }
+  };
+  Live.prototype.fileUrl = async function (bucket, path) {
+    if (bucket === 'forms') return this.sb.storage.from(bucket).getPublicUrl(path).data.publicUrl;
+    var r = await this.sb.storage.from(bucket).createSignedUrl(path, 600);
+    if (r.error) throw new Error(r.error.message);
+    return r.data.signedUrl;
+  };
+  Live.prototype.removeFile = async function (bucket, path) {
+    var r = await this.sb.storage.from(bucket).remove([path]);
+    if (r.error) throw new Error(r.error.message);
   };
   Live.prototype.cache = function (S) { if (this.uid && S) lsSet(CACHE + this.uid, JSON.stringify(S)); };
 

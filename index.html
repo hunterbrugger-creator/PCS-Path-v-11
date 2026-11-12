@@ -177,6 +177,18 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .toast.on{opacity:1;transform:translate(-50%,0)}
 .toast.err{background:#A32D2D}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.pw{position:relative}
+.pw .fi{padding-right:44px}
+.eye{position:absolute;right:3px;top:2px;width:36px;height:34px;border:none;background:none;color:var(--t3);cursor:pointer;border-radius:7px;font-size:18px;display:flex;align-items:center;justify-content:center}
+.eye:hover{color:var(--t1)}
+.fileln{display:flex;align-items:center;gap:9px;padding:8px 0;border-top:1px solid var(--d3);font-size:12px}
+.fileln:first-of-type{border-top:none}
+.fileln i.ft{font-size:18px;color:#A32D2D;flex-shrink:0}
+.fileln .fn{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--t1)}
+.fileln .fz{font-size:10.5px;color:var(--t3);font-weight:400}
+.fbox{background:var(--b2);border-radius:var(--rm);padding:8px 11px;margin-bottom:12px}
+.chipbtn{display:inline-flex;align-items:center;gap:5px;background:var(--b2);border:1px solid var(--d3);border-radius:99px;padding:4px 9px;font-size:11px;color:var(--t1);cursor:pointer;font-family:var(--fn);max-width:100%}
+.chipbtn span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .boot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:60vh;color:var(--t3);font-size:12.5px;text-align:center;padding:24px}
 .boot i{font-size:30px}
 </style>
@@ -195,7 +207,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <label class="fl" for="lg-email">Email</label>
 <input class="fi" id="lg-email" type="email" placeholder="first.last@us.af.mil" autocomplete="username">
 <label class="fl" for="lg-pass">Password</label>
-<input class="fi" id="lg-pass" type="password" placeholder="Password" autocomplete="current-password">
+<div class="pw"><input class="fi" id="lg-pass" type="password" placeholder="Password" autocomplete="current-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('lg-pass',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
 <button class="pbtn bblue" type="submit" id="lg-go">Sign in</button>
 <div class="linkrow"><button type="button" class="lbtn" onclick="startSignup()">Create an account</button><button type="button" class="lbtn" onclick="forgot()">Forgot password?</button></div>
 <div id="demolist"></div>
@@ -217,7 +229,8 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div id="su-1" class="tab on"><div class="pad">
 <label class="fl" for="su-name">Rank and full name</label><input class="fi" id="su-name" placeholder="SSgt Carter, James" autocomplete="name">
 <label class="fl" for="su-email">Work email</label><input class="fi" id="su-email" type="email" placeholder="first.last@us.af.mil" autocomplete="email">
-<label class="fl" for="su-pass">Password</label><input class="fi" id="su-pass" type="password" placeholder="At least 8 characters" autocomplete="new-password">
+<label class="fl" for="su-pass">Password</label><div class="pw"><input class="fi" id="su-pass" type="password" placeholder="At least 8 characters" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('su-pass',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
+<label class="fl" for="su-pass2">Confirm password</label><div class="pw"><input class="fi" id="su-pass2" type="password" placeholder="Type it again" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password" aria-pressed="false" onclick="togglePw('su-pass2',this)"><i class="ti ti-eye" aria-hidden="true"></i></button></div>
 <label class="fl" for="su-unit">Unit</label><input class="fi" id="su-unit" placeholder="100 LRS">
 <label class="fl" for="su-base">Current base</label><select class="fs" id="su-base"></select>
 <div class="brow"><button class="ibtn" onclick="show('s-login')">Back to sign in</button><button class="pbtn bblue" onclick="suNext(2)">Continue</button></div>
