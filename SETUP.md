@@ -44,6 +44,13 @@ This creates two file stores:
 Until you run it, everything else in the app keeps working. Uploading shows
 "File storage is not set up yet".
 
+## 2c. Turn on self-service appointments
+
+Run [`supabase/appointments.sql`](supabase/appointments.sql) the same way.
+Every office then takes bookings Monday to Friday, 0800 to 1600, in 30-minute
+slots, with no setup. Members pick a free time and it is confirmed straight
+away. Office leads can block times or change their hours in the app.
+
 ## 3. Turn on sign-in
 
 1. Open **Authentication** → **URL Configuration**.

@@ -162,7 +162,7 @@
     var T = dayFromToday;
     var now = new Date();
     function ts(daysAgo, h, m) { var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - daysAgo, h || 9, m || 0); return d.toISOString(); }
-    var db = { version: 1, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
+    var db = { version: 2, auth: [], bases: [], offices: [], profiles: [], tasks: [], task_progress: [], tips: [], messages: [], notifications: [], appt_requests: [], slots: [], role_requests: [], reminder_rules: [], sponsor_prep: [] };
 
     db.bases = [
       { id: 'mildenhall', name: 'RAF Mildenhall', country: 'UK', live: true },
@@ -268,7 +268,8 @@
         ['10:00', '10:30'].forEach(function (tm) {
           var d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + w * 7 + dow);
           si++;
-          db.slots.push({ id: 'slot-' + si, office_id: MEDREC, slot_day: iso(d), slot_time: tm, member_id: si === 2 ? 'u-walker' : si === 5 ? 'u-reyes' : null, blocked: si === 4 });
+          // Only booked or blocked times are stored; every other time in office hours is open.
+          if (si === 2 || si === 5 || si === 4) db.slots.push({ id: 'slot-' + si, office_id: MEDREC, slot_day: iso(d), slot_time: tm, member_id: si === 2 ? 'u-walker' : si === 5 ? 'u-reyes' : null, blocked: si === 4 });
         });
       });
     }

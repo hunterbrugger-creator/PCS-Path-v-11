@@ -44,8 +44,8 @@ const TABS = {
   sponsor: ['s', ['mem', 'prep', 'msg'], 'son'],
   worker: ['w', ['queue', 'req', 'hist', 'tips'], 'bon'],
   lead: ['l', ['sched', 'req', 'queue', 'office', 'tips'], 'lon'],
-  counsel: ['c', ['mem', 'so', 'tips'], 'con'],
-  mpf: ['b', ['prof', 'tasks', 'inb', 'users'], 'bon'],
+  counsel: ['c', ['mem', 'so', 'appt', 'tips'], 'con'],
+  mpf: ['b', ['prof', 'tasks', 'appt', 'inb', 'users'], 'bon'],
   cmd: ['d', ['out', 'in', 'tips'], 'con'],
   global: ['g', ['health', 'bases', 'req', 'tips'], 'gon']
 };
@@ -464,6 +464,8 @@ function enterRole(r) {
   }
   drawRole();
   tab(ui.tabs[r] || TABS[r][1][0]);
+  // A brand-new base gets the starter checklist automatically, no button needed.
+  if (r === 'mpf' && me.base_id && !ui.autoStarter && !S.tasks.some(t => t.base_id === me.base_id)) { ui.autoStarter = true; loadStarter(); }
 }
 function tab(t) {
   const cfg = TABS[role]; if (!cfg) return;
@@ -549,17 +551,21 @@ function taskCard(p, t, locked) {
   if (t.triggers_handoff) rows += dmr('ti-plane', 'Signing this releases your record to ' + baseName(p.gaining_base));
   if (fin && r && r.signed_name) rows += dmr('ti-writing-sign', r.signed_name);
   if (s === 'submitted') rows += dmr('ti-hourglass', 'You marked your part done. ' + (off ? off.name : 'Your counselor') + ' confirms and signs it off.');
-  const appt = S.appt_requests.find(a => a.member_id === p.id && a.task_id === t.id && a.status !== 'declined');
-  const slot = appt && appt.slot_id ? S.slots.find(x => x.id === appt.slot_id) : null;
-  if (appt && appt.status === 'confirmed') rows += dmr('ti-calendar-check', 'Appointment confirmed' + (slot ? ': ' + slotLabel(slot) : ', walk in during office hours'));
-  let btns = '';
+  const bk = myBooking(p.id, t.id);
+  const pendingReq = !bk && S.appt_requests.find(a => a.member_id === p.id && a.task_id === t.id && a.status === 'pending');
+  if (bk) rows += dmr('ti-calendar-check', 'Appointment: ' + slotLabel(bk.slot) + ' at ' + (t.loc || (off && off.building) || 'the office'));
+  if (pendingReq) rows += dmr('ti-calendar-event', 'Appointment requested. The office will offer you a time.');
+  let btns = '', picker = '';
   if (!fin && !locked) {
     if (s === 'submitted') btns += `<button class="ibtn" onclick="undoMine('${t.id}')">Undo, I am not done</button>`;
     else btns += `<button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" onclick="markMine('${t.id}')">I have done my part</button>`;
-    if (off) btns += appt ? `<button class="ibtn" disabled>${appt.status === 'confirmed' ? 'Appointment booked' : 'Appointment requested'}</button>` : `<button class="ibtn" onclick="reqAppt('${t.id}')">Request appointment</button>`;
+    if (off && bk) btns += `<button class="ibtn" onclick="cancelBooking('${bk.appt.id}')">Cancel appointment</button>`;
+    else if (off && ui.book !== t.id) btns += `<button class="ibtn" onclick="openBook('${t.id}')"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Book a time</button>`;
+    if (off && ui.book === t.id && !bk) picker = bookPicker(t, off);
   }
+  btns = picker + (btns ? '<div class="brow">' + btns + '</div>' : '');
   const nf = formsFor(t.id).length + myFilesFor(p.id, t.id).length;
-  return `<div class="card${fin ? ' dim' : ''}"><button class="trow" aria-expanded="${open}" onclick="tapTask('${t.id}')">${mark}<span class="tb"><span class="tn">${esc(t.name)}</span><span class="ts">${esc(t.office_name || '')}${t.loc ? ' · ' + esc(t.loc) : ''}${nf ? ' · <i class="ti ti-paperclip" aria-hidden="true"></i>' + nf + '<span class="sr"> files</span>' : ''}</span></span>${badge}</button><div class="tdet${open ? ' on' : ''}"><div class="dlbl">What this is</div><div class="dtxt">${esc(t.descr)}</div><div class="dmeta">${rows}</div>${memberFilesBlock(p, t, locked)}${btns ? '<div class="brow">' + btns + '</div>' : ''}</div></div>`;
+  return `<div class="card${fin ? ' dim' : ''}"><button class="trow" aria-expanded="${open}" onclick="tapTask('${t.id}')">${mark}<span class="tb"><span class="tn">${esc(t.name)}</span><span class="ts">${esc(t.office_name || '')}${t.loc ? ' · ' + esc(t.loc) : ''}${nf ? ' · <i class="ti ti-paperclip" aria-hidden="true"></i>' + nf + '<span class="sr"> files</span>' : ''}</span></span>${badge}</button><div class="tdet${open ? ' on' : ''}"><div class="dlbl">What this is</div><div class="dtxt">${esc(t.descr)}</div><div class="dmeta">${rows}</div>${memberFilesBlock(p, t, locked)}${btns}</div></div>`;
 }
 
 // ---------------------------------------------------------------------
@@ -650,12 +656,78 @@ async function markMine(taskId) {
 async function undoMine(taskId) {
   if (await del('task_progress', { member_id: me.id, task_id: taskId, status: 'submitted' })) { toast('Undone.'); drawMember(); }
 }
-async function reqAppt(taskId) {
-  const t = TK(taskId), off = O(t.office_id);
-  const rows = await ins('appt_requests', { member_id: me.id, task_id: taskId, office_id: t.office_id, note: '', status: 'pending', slot_id: null });
-  if (!rows) return;
-  if (navigator.onLine !== false) toast('Request sent to ' + off.name + '. You get a notification when they confirm a time.');
+// ---------------------------------------------------------------------
+// Appointments. Every office takes bookings on a weekly schedule, by
+// default Monday to Friday 0800-1600 in 30-minute slots, with no setup.
+// Slot rows only exist for times that are booked or blocked.
+// ---------------------------------------------------------------------
+const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function officeSched(off) {
+  return { days: String((off && off.open_days) || '12345'), open: (off && off.open_time) || '08:00', close: (off && off.close_time) || '16:00', len: parseInt((off && off.slot_minutes) || 30, 10) || 30 };
+}
+const toMin = hm => { const m = /^(\d{1,2}):(\d{2})/.exec(hm || ''); return m ? +m[1] * 60 + +m[2] : 0; };
+const fromMin = n => pad2(Math.floor(n / 60)) + ':' + pad2(n % 60);
+const hhmm = hm => String(hm || '').replace(':', '');
+function schedLabel(off) {
+  const s = officeSched(off), d = s.days.split('').map(Number).sort();
+  const days = d.join('') === '12345' ? 'Mon–Fri' : d.map(x => DOW_SHORT[x]).join(', ');
+  return days + ', ' + hhmm(s.open) + '–' + hhmm(s.close) + ', ' + s.len + '-minute appointments';
+}
+function timesFor(off, day) {
+  const s = officeSched(off), d = parseISO(day);
+  if (!d || !s.days.includes(String(d.getDay()))) return [];
+  const out = [];
+  for (let m = toMin(s.open); m + s.len <= toMin(s.close); m += s.len) out.push(fromMin(m));
+  return out;
+}
+const slotAt = (offId, day, time) => S.slots.find(x => x.office_id === offId && x.slot_day === day && x.slot_time === time);
+function freeTimes(off, day) {
+  const now = new Date(), nowHm = pad2(now.getHours()) + ':' + pad2(now.getMinutes());
+  return timesFor(off, day).filter(tm => { const r = slotAt(off.id, day, tm); return !(r && (r.member_id || r.blocked)) && !(day === today() && tm <= nowHm); });
+}
+function openDays(off, max) {
+  const out = [];
+  for (let i = 0; i < 42 && out.length < max; i++) { const d = addDays(today(), i), times = freeTimes(off, d); if (times.length) out.push({ day: d, times }); }
+  return out;
+}
+function myBooking(memberId, taskId) {
+  const appt = S.appt_requests.find(a => a.member_id === memberId && a.task_id === taskId && a.status === 'confirmed' && a.slot_id);
+  const slot = appt && S.slots.find(x => x.id === appt.slot_id);
+  return slot && slot.slot_day >= today() ? { appt, slot } : null;
+}
+function openBook(taskId) { ui.book = taskId; ui.bookDay = null; drawTaskList(); }
+function bookPicker(t, off) {
+  const days = openDays(off, 15);
+  if (!days.length) return `<div class="af" style="margin-bottom:12px"><div class="ts" style="margin:0">${esc(off.name)} has no free times in the next six weeks. Call DSN ${esc(off.phone || t.phone || '')}.</div><div class="brow" style="margin-top:10px"><button class="ibtn" onclick="ui.book=null;drawTaskList()">Close</button></div></div>`;
+  const day = days.find(d => d.day === ui.bookDay) ? ui.bookDay : days[0].day, times = days.find(d => d.day === day).times;
+  return `<div class="af" style="margin-bottom:12px"><h4>Book ${esc(off.name)}</h4><div class="g2"><div><label class="fl" for="bk-day">Day</label><select class="fs" id="bk-day" onchange="ui.bookDay=this.value;drawTaskList()">${days.map(d => opt(d.day, DOW_SHORT[parseISO(d.day).getDay()] + ' ' + fmtShort(d.day) + (d.day === today() ? ' (today)' : ''), d.day === day)).join('')}</select></div><div><label class="fl" for="bk-time">Time</label><select class="fs" id="bk-time">${times.map(tm => opt(tm, hhmm(tm))).join('')}</select></div></div><div class="brow"><button class="pbtn ${t.dir === 'out' ? 'bblue' : 'bpurp'}" id="bk-go" onclick="bookTime('${t.id}')">Book it</button><button class="ibtn" onclick="ui.book=null;drawTaskList()">Cancel</button></div><div class="fhint" style="margin:8px 0 0">${esc(schedLabel(off))}. Your appointment is confirmed straight away.</div></div>`;
+}
+function bookErr(e) {
+  const m = String(e && e.message || e);
+  if (/duplicate|unique/i.test(m)) return 'Someone just took that time. Pick another one.';
+  if (/row-level security|permission/i.test(m)) return 'Booking is not switched on yet. Your admin needs to run supabase/appointments.sql (SETUP.md step 2c).';
+  return 'Could not book. ' + m;
+}
+async function bookTime(taskId) {
+  const t = TK(taskId), off = O(t.office_id), day = val('bk-day'), time = val('bk-time');
+  if (!day || !time) return;
+  if (!freeTimes(off, day).includes(time)) { toast('Someone just took that time. Pick another one.', 'err'); drawTaskList(); return; }
+  if (navigator.onLine === false) { toast('Connect to the internet to book an appointment.', 'err'); return; }
+  busy('bk-go', true, 'Booking');
+  const slot = { id: DB.newId(), office_id: off.id, slot_day: day, slot_time: time, member_id: me.id, blocked: false };
+  try { await DB.insert('slots', [slot]); } catch (e) { toast(bookErr(e), 'err'); await reload(); drawMember(); return; }
+  S.slots.push(slot);
+  for (const a of S.appt_requests.filter(x => x.member_id === me.id && x.task_id === taskId && x.status === 'pending')) await del('appt_requests', { id: a.id });
+  await ins('appt_requests', { member_id: me.id, task_id: taskId, office_id: off.id, note: '', status: 'confirmed', slot_id: slot.id });
+  ui.book = null;
+  toast('Booked: ' + off.name + ', ' + slotLabel(slot) + '.');
   drawMember();
+}
+async function cancelBooking(apptId) {
+  const a = S.appt_requests.find(x => x.id === apptId), slot = a && S.slots.find(x => x.id === a.slot_id);
+  if (!a || !window.confirm('Cancel this appointment' + (slot ? ' on ' + slotLabel(slot) : '') + '?')) return;
+  if (slot && !(await del('slots', { id: slot.id }))) return;
+  if (await del('appt_requests', { id: apptId })) { toast('Appointment cancelled. The time is free for someone else.'); drawMember(); }
 }
 
 // Inbox
@@ -928,33 +1000,65 @@ async function signOff(memberId, taskId, status) {
   toast((status === 'na' ? 'Marked not needed. ' : 'Signed off. ') + m.name.split(',')[0] + ' has been notified.');
   drawRole();
 }
+function setBadge(id, n) { const b = el(id); if (b) { b.textContent = n; b.classList.toggle('on', n > 0); } }
+// Office workers and leads answer their own office's requests. The MPF and
+// counselor see every office at the base, so nothing sits unseen when an
+// office has nobody linked to it yet.
+function apptOffices() {
+  if (role === 'worker' || role === 'lead') { const o = myOffice(); return o ? [o] : []; }
+  return S.offices.filter(o => o.base_id === me.base_id).sort(sortByName);
+}
+const staffedOffice = o => S.profiles.some(p => p.office_id === o.id && p.status === 'active' && (p.roles.includes('worker') || p.roles.includes('lead')));
+const canManageOffice = offId => ((role === 'worker' || role === 'lead') && me.office_id === offId) || role === 'mpf';
 function drawAppts(cid, badgeId) {
-  const off = myOffice(), box = el(cid);
-  if (!off) { box.innerHTML = noOffice(); return; }
-  const reqs = S.appt_requests.filter(a => a.office_id === off.id && a.status === 'pending').sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
-  const b = el(badgeId); b.textContent = reqs.length; b.classList.toggle('on', reqs.length > 0);
-  const open = S.slots.filter(s => s.office_id === off.id && !s.member_id && !s.blocked && s.slot_day >= today()).sort((a, b2) => (a.slot_day + a.slot_time).localeCompare(b2.slot_day + b2.slot_time));
-  if (!reqs.length) { box.innerHTML = emp('ti-calendar-check', 'No appointment requests waiting.'); return; }
-  box.innerHTML = reqs.map(a => {
-    const m = P(a.member_id) || { name: 'Member' }, t = TK(a.task_id);
-    const pick = open.length ? `<label class="fl" for="as-${a.id}" style="margin-top:10px">Offer a time</label><select class="fs" id="as-${a.id}">${open.map(s => opt(s.id, slotLabel(s))).join('')}</select>` : `<div class="ts" style="margin:10px 0">No open slots. Confirming tells them to walk in during office hours${role === 'lead' ? ', or add slots in Schedule first' : ''}.</div>`;
-    return `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">${esc(t ? t.name : '')} · asked ${esc(when(a.created_at))}</div></div></div>${a.note ? `<div class="ts" style="margin-top:8px">${esc(a.note)}</div>` : ''}${pick}<div class="brow"><button class="sbtn" style="flex:1" onclick="answerAppt('${a.id}',true)">Confirm</button><button class="ibtn dg" onclick="answerAppt('${a.id}',false)">Decline</button></div></div>`;
-  }).join('');
+  const offs = apptOffices(), box = el(cid), own = role === 'worker' || role === 'lead';
+  if (!offs.length) { setBadge(badgeId, 0); box.innerHTML = own ? noOffice() : emp('ti-building', 'No offices at this base yet. The starter checklist adds them.'); return; }
+  const ids = new Set(offs.map(o => o.id));
+  const reqs = S.appt_requests.filter(a => ids.has(a.office_id) && a.status === 'pending').sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  const booked = S.appt_requests.map(a => ({ a, s: a.status === 'confirmed' && S.slots.find(x => x.id === a.slot_id) }))
+    .filter(x => x.s && ids.has(x.a.office_id) && x.s.slot_day >= today()).sort((x, y) => (x.s.slot_day + x.s.slot_time).localeCompare(y.s.slot_day + y.s.slot_time));
+  setBadge(badgeId, reqs.length + booked.filter(x => x.s.slot_day === today()).length);
+  let h = `<div class="ts" style="margin:0 0 2px;line-height:1.5">${own ? 'Members book themselves into open times. ' + esc(schedLabel(offs[0])) + '.' : 'Bookings for every office at ' + esc(baseName(me.base_id)) + '. Members book themselves into open times, so there is nothing to approve.'}</div>`;
+  if (reqs.length) {
+    h += '<div class="dlbl" style="margin-top:6px">Waiting for a time</div>' + reqs.map(a => {
+      const m = P(a.member_id) || { name: 'Member' }, t = TK(a.task_id), off = O(a.office_id) || { name: 'Office' }, days = O(a.office_id) ? openDays(off, 10) : [];
+      const choices = days.flatMap(d => d.times.slice(0, 16).map(tm => [d.day + '|' + tm, DOW_SHORT[parseISO(d.day).getDay()] + ' ' + fmtShort(d.day) + ', ' + hhmm(tm)]));
+      const act = canManageOffice(a.office_id) ? `${choices.length ? `<label class="fl" for="as-${a.id}" style="margin-top:10px">Book them in at</label><select class="fs" id="as-${a.id}">${choices.map(c => opt(c[0], c[1])).join('')}</select>` : ''}<div class="brow"><button class="sbtn" style="flex:1" onclick="answerAppt('${a.id}',true)">Book it</button><button class="ibtn dg" onclick="answerAppt('${a.id}',false)">Decline</button></div>` : '';
+      return `<div class="card"><div class="row">${avatar(m)}<div style="flex:1"><div class="tn">${esc(m.name)}</div><div class="ts">${esc(t ? t.name : '')} · asked ${esc(when(a.created_at))}</div></div>${own ? '' : pill('pl', off.name)}</div>${act}</div>`;
+    }).join('');
+  }
+  h += '<div class="dlbl" style="margin-top:6px">Upcoming appointments</div>';
+  h += booked.length ? '<div class="card">' + booked.slice(0, 60).map((x, i) => {
+    const m = P(x.a.member_id) || { name: 'Member' }, t = TK(x.a.task_id), off = O(x.a.office_id) || { name: '' };
+    return `<div class="frow"${i === 0 ? ' style="border-top:none;padding-top:0"' : ''}>${avatar(m)}<div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:600">${esc(m.name)}</div><div class="ts">${esc(slotLabel(x.s))}${x.s.slot_day === today() ? ' (today)' : ''} · ${esc(t ? t.name : '')}${own ? '' : ' · ' + esc(off.name)}</div>${uploadsChips(x.a.member_id, x.a.task_id)}</div>${canManageOffice(x.a.office_id) ? `<button class="ibtn dg" onclick="officeCancel('${x.a.id}')">Cancel</button>` : ''}</div>`;
+  }).join('') + '</div>' : emp('ti-calendar-check', 'Nothing booked yet.');
+  box.innerHTML = h;
 }
 async function answerAppt(id, yes) {
-  const a = S.appt_requests.find(x => x.id === id), off = myOffice(), t = TK(a.task_id);
+  const a = S.appt_requests.find(x => x.id === id), off = O(a.office_id) || { name: 'The office' }, t = TK(a.task_id);
   if (!yes) {
     if (await upd('appt_requests', { id }, { status: 'declined' })) {
-      await notify(a.member_id, 'system', off.name + ' could not book you in', 'Call DSN ' + (off.phone || 'the office') + ' to arrange a time for ' + (t ? t.name : 'your task') + '.');
-      toast('Declined. The member has been told to call.'); drawRole();
+      await notify(a.member_id, 'system', off.name + ' could not book you in', 'Book another time from the task, or call DSN ' + (off.phone || 'the office') + '.');
+      toast('Declined. The member has been told.'); drawRole();
     }
     return;
   }
-  const slotId = val('as-' + id) || null, slot = slotId ? S.slots.find(s => s.id === slotId) : null;
-  if (slot && !(await upd('slots', { id: slotId }, { member_id: a.member_id }))) return;
-  if (!(await upd('appt_requests', { id }, { status: 'confirmed', slot_id: slotId }))) return;
-  await notify(a.member_id, 'system', 'Appointment confirmed: ' + off.name, slot ? slotLabel(slot) + ' at ' + (off.building || 'the office') + '.' : 'Walk in during office hours: ' + (off.hours || 'see the task for hours') + '.');
-  toast('Confirmed. The member has been notified.'); drawRole();
+  const pick = val('as-' + id);
+  if (!pick) { toast('No free times to offer. Change the office hours in the Office tab.', 'err'); return; }
+  const [day, time] = pick.split('|'), slot = { id: DB.newId(), office_id: a.office_id, slot_day: day, slot_time: time, member_id: a.member_id, blocked: false };
+  try { await DB.insert('slots', [slot]); } catch (e) { toast(bookErr(e), 'err'); await reload(); drawRole(); return; }
+  S.slots.push(slot);
+  if (!(await upd('appt_requests', { id }, { status: 'confirmed', slot_id: slot.id }))) return;
+  await notify(a.member_id, 'system', 'Appointment booked: ' + off.name, slotLabel(slot) + ' at ' + (off.building || 'the office') + '.');
+  toast('Booked. The member has been notified.'); drawRole();
+}
+async function officeCancel(apptId) {
+  const a = S.appt_requests.find(x => x.id === apptId), slot = S.slots.find(x => x.id === a.slot_id), off = O(a.office_id) || { name: 'The office' };
+  if (!window.confirm('Cancel this appointment? The member is told to book another time.')) return;
+  if (!(await upd('appt_requests', { id: apptId }, { status: 'declined' }))) return;
+  if (slot) await del('slots', { id: slot.id });
+  await notify(a.member_id, 'system', off.name + ' cancelled your appointment', (slot ? slotLabel(slot) + ' is cancelled. ' : '') + 'Book another time from the task.');
+  toast('Cancelled. The member has been told.'); drawRole();
 }
 function drawHistory(cid) {
   const off = myOffice(), box = el(cid);
@@ -982,33 +1086,59 @@ function drawLead() {
 function drawSched() {
   const off = myOffice(), box = el('lsched');
   if (!off) { box.innerHTML = noOffice(); return; }
-  const ws = weekStart(ui.wk), we = addDays(ws, 6);
-  const list = S.slots.filter(s => s.office_id === off.id && s.slot_day >= ws && s.slot_day <= we).sort((a, b) => (a.slot_day + a.slot_time).localeCompare(b.slot_day + b.slot_time));
-  const cell = s => {
-    if (s.member_id) { const m = P(s.member_id); return `<div class="slot bk">${esc(slotLabel(s).split(',')[0])}<br>${esc(s.slot_time)}<span class="sm">${esc(m ? m.name.split(',')[0] : 'Booked')}</span></div>`; }
-    return `<button class="slot${s.blocked ? ' blk' : ''}" aria-pressed="${!!s.blocked}" onclick="toggleSlot('${s.id}')">${esc(slotLabel(s).split(',')[0])}<br>${esc(s.slot_time)}<span class="sm">${s.blocked ? 'Blocked' : 'Open'}</span></button>`;
-  };
-  const defDay = ui.wk === 0 && today() > ws ? today() : ws;
-  box.innerHTML = `<div class="card"><div class="row" style="justify-content:space-between"><button class="ibtn" aria-label="Previous week" onclick="wk(-1)"${ui.wk <= 0 ? ' disabled' : ''}><i class="ti ti-chevron-left" aria-hidden="true"></i></button><span style="font-size:12.5px;font-weight:600">Week of ${esc(fmtShort(ws))}</span><button class="ibtn" aria-label="Next week" onclick="wk(1)"${ui.wk >= 12 ? ' disabled' : ''}><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>` +
-    (list.length ? `<div class="slotg">${list.map(cell).join('')}</div><div class="legend">Tap an open slot to block it, tap again to reopen. Blue slots are booked.</div>` : emp('ti-calendar', 'No slots this week.')) + '</div>' +
-    `<div class="card"><div class="tn" style="margin-bottom:10px">Add a slot</div><div class="g2"><div><label class="fl" for="ls-day">Day</label><input class="fi" type="date" id="ls-day" value="${defDay}" min="${today()}"></div><div><label class="fl" for="ls-time">Time</label><input class="fi" type="time" id="ls-time" value="10:00"></div></div><button class="pbtn blead" onclick="addSlot()">Add slot</button></div>`;
+  const ws = weekStart(ui.wk), now = new Date(), nowHm = pad2(now.getHours()) + ':' + pad2(now.getMinutes());
+  let days = '';
+  for (let i = 0; i < 7; i++) {
+    const day = addDays(ws, i), times = timesFor(off, day);
+    if (!times.length) continue;
+    const past = day < today(), booked = times.filter(tm => { const r = slotAt(off.id, day, tm); return r && r.member_id; }).length;
+    const blockedAll = times.every(tm => { const r = slotAt(off.id, day, tm); return r && (r.blocked || r.member_id); });
+    const cells = times.map(tm => {
+      const r = slotAt(off.id, day, tm), gone = past || (day === today() && tm <= nowHm);
+      if (r && r.member_id) { const m = P(r.member_id); return `<div class="slot bk">${hhmm(tm)}<span class="sm">${esc(m ? m.name.split(',')[0].replace(/^\S+\s/, '') : 'Booked')}</span></div>`; }
+      if (gone) return `<div class="slot blk" style="opacity:.5">${hhmm(tm)}</div>`;
+      return `<button class="slot${r && r.blocked ? ' blk' : ''}" aria-pressed="${!!(r && r.blocked)}" aria-label="${hhmm(tm)} ${r && r.blocked ? 'blocked, tap to reopen' : 'open, tap to block'}" onclick="toggleTime('${day}','${tm}')">${hhmm(tm)}</button>`;
+    }).join('');
+    days += `<div class="card"><div class="row" style="justify-content:space-between"><div><div class="tn">${DOW_SHORT[parseISO(day).getDay()]} ${esc(fmtShort(day))}${day === today() ? ' (today)' : ''}</div><div class="ts">${booked} booked</div></div>${past ? '' : `<button class="ibtn" onclick="blockDay('${day}',${!blockedAll})">${blockedAll ? 'Reopen day' : 'Block whole day'}</button>`}</div><div class="slotg" style="grid-template-columns:repeat(4,1fr)">${cells}</div></div>`;
+  }
+  box.innerHTML = `<div class="card soft"><div class="ts" style="margin:0;line-height:1.55">Members book themselves into open times. ${esc(schedLabel(off))}. Tap a time to block it, for example for lunch or training, and tap again to reopen it. Change hours in the Office tab.</div></div>` +
+    `<div class="row" style="justify-content:space-between"><button class="ibtn" aria-label="Previous week" onclick="wk(-1)"${ui.wk <= 0 ? ' disabled' : ''}><i class="ti ti-chevron-left" aria-hidden="true"></i></button><span style="font-size:12.5px;font-weight:600">Week of ${esc(fmtShort(ws))}</span><button class="ibtn" aria-label="Next week" onclick="wk(1)"${ui.wk >= 12 ? ' disabled' : ''}><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div>` +
+    (days || emp('ti-calendar', 'The office is closed all of this week.')) + '<div class="legend">Blue: booked · Crossed out: blocked or past</div>';
 }
 function wk(d) { ui.wk = Math.max(0, Math.min(12, ui.wk + d)); drawSched(); }
-async function toggleSlot(id) { const s = S.slots.find(x => x.id === id); if (await upd('slots', { id }, { blocked: !s.blocked })) { toast(s.blocked ? 'Slot blocked.' : 'Slot reopened.'); drawSched(); } }
-async function addSlot() {
-  const day = val('ls-day'), time = val('ls-time');
-  if (!day || !time) { toast('Pick a day and a time.', 'err'); return; }
-  if (day < today()) { toast('Pick a day from today onward.', 'err'); return; }
-  if (await ins('slots', { office_id: myOffice().id, slot_day: day, slot_time: time, member_id: null, blocked: false })) {
-    ui.wk = Math.max(0, Math.min(12, Math.floor(diffDays(weekStart(0), day) / 7)));
-    toast('Slot added.'); drawSched();
+async function toggleTime(day, time) {
+  const off = myOffice(), r = slotAt(off.id, day, time);
+  if (r && r.member_id) return;
+  const ok = r ? await del('slots', { id: r.id }) : await ins('slots', { office_id: off.id, slot_day: day, slot_time: time, member_id: null, blocked: true });
+  if (ok) drawSched();
+}
+async function blockDay(day, block) {
+  const off = myOffice();
+  if (block) {
+    const free = freeTimes(off, day);
+    for (const tm of free) { const r = slotAt(off.id, day, tm); if (r) await upd('slots', { id: r.id }, { blocked: true }); }
+    const rows = free.filter(tm => !slotAt(off.id, day, tm)).map(tm => ({ office_id: off.id, slot_day: day, slot_time: tm, member_id: null, blocked: true }));
+    if (!rows.length || await ins('slots', rows)) toast(fmtShort(day) + ' blocked. Existing bookings stay.');
+  } else {
+    for (const r of S.slots.filter(x => x.office_id === off.id && x.slot_day === day && x.blocked && !x.member_id)) await del('slots', { id: r.id });
+    toast(fmtShort(day) + ' reopened.');
   }
+  drawSched();
 }
 function drawOfficeForm() {
   const off = myOffice(), box = el('loffice');
   if (!off) { box.innerHTML = noOffice(); return; }
-  const st = ['Open', 'At lunch', 'Long wait', 'Closed today'];
-  box.innerHTML = `<div class="card"><label class="fl" for="of-n">Office name</label><input class="fi" id="of-n" value="${esc(off.name)}"><label class="fl" for="of-b">Building</label><input class="fi" id="of-b" value="${esc(off.building || '')}"><label class="fl" for="of-p">Phone (DSN)</label><input class="fi" id="of-p" value="${esc(off.phone || '')}"><label class="fl" for="of-h">Hours</label><input class="fi" id="of-h" value="${esc(off.hours || '')}"><label class="fl" for="of-s">Current status</label><select class="fs" id="of-s">${st.map(s => opt(s, s, off.status === s)).join('')}</select><div class="fhint">Members see your hours, phone and any status other than Open on every task your office signs off.</div><button class="pbtn blead" onclick="saveOffice()">Save changes</button></div>` + officeFormsCards(off);
+  const st = ['Open', 'At lunch', 'Long wait', 'Closed today'], sc = officeSched(off);
+  const canSched = DB.mode === 'demo' || 'open_days' in off;
+  const sched = canSched ? `<div class="card"><div class="tn">Appointment hours</div><div class="ts" style="margin-bottom:10px">Members can only book inside these hours.</div><div class="chips" style="margin-bottom:11px">${[1, 2, 3, 4, 5, 6, 0].map(d => `<label class="cbx" style="margin:0 6px 0 0"><input type="checkbox" id="od-${d}"${sc.days.includes(String(d)) ? ' checked' : ''}> ${DOW_SHORT[d]}</label>`).join('')}</div><div class="g2"><div><label class="fl" for="of-open">Opens</label><input class="fi" type="time" id="of-open" value="${esc(sc.open)}"></div><div><label class="fl" for="of-close">Closes</label><input class="fi" type="time" id="of-close" value="${esc(sc.close)}"></div></div><label class="fl" for="of-len">Appointment length</label><select class="fs" id="of-len">${[15, 20, 30, 45, 60].map(n => opt(n, n + ' minutes', n === sc.len)).join('')}</select><button class="pbtn blead" onclick="saveSchedule()">Save hours</button></div>`
+    : `<div class="card soft"><div class="ts" style="margin:0">Appointments run ${esc(schedLabel(off))}. To change them, your admin runs supabase/appointments.sql (SETUP.md step 2c).</div></div>`;
+  box.innerHTML = `<div class="card"><label class="fl" for="of-n">Office name</label><input class="fi" id="of-n" value="${esc(off.name)}"><label class="fl" for="of-b">Building</label><input class="fi" id="of-b" value="${esc(off.building || '')}"><label class="fl" for="of-p">Phone (DSN)</label><input class="fi" id="of-p" value="${esc(off.phone || '')}"><label class="fl" for="of-h">Hours shown to members</label><input class="fi" id="of-h" value="${esc(off.hours || '')}"><label class="fl" for="of-s">Current status</label><select class="fs" id="of-s">${st.map(s => opt(s, s, off.status === s)).join('')}</select><div class="fhint">Members see your hours, phone and any status other than Open on every task your office signs off.</div><button class="pbtn blead" onclick="saveOffice()">Save changes</button></div>` + sched + officeFormsCards(off);
+}
+async function saveSchedule() {
+  const off = myOffice(), days = [0, 1, 2, 3, 4, 5, 6].filter(d => checked('od-' + d)).join(''), open = val('of-open'), close = val('of-close'), len = parseInt(val('of-len'), 10);
+  if (!days) { toast('Pick at least one day.', 'err'); return; }
+  if (!open || !close || toMin(close) - toMin(open) < len) { toast('Closing time must be after opening time.', 'err'); return; }
+  if (await upd('offices', { id: off.id }, { open_days: days, open_time: open, close_time: close, slot_minutes: len })) { toast('Saved. Members now see ' + schedLabel(O(off.id)) + '.'); drawLead(); }
 }
 function officeFormsCards(off) {
   const tasks = S.tasks.filter(t => t.office_id === off.id).sort((a, b) => a.dir.localeCompare(b.dir) || (a.sort - b.sort));
@@ -1039,6 +1169,7 @@ function drawCounsel() {
     el('cso').innerHTML = `<label class="fl" for="cso-pick">Member</label><select class="fs" id="cso-pick" onchange="ui.cso=this.value;drawCounsel()">${list.map(x => opt(x.id, x.name, x.id === m.id)).join('')}</select>` +
       (open.length ? '<div class="card">' + open.map((x, i) => { const off = x.t.office_id ? O(x.t.office_id) : null; return `<div class="frow"${i === 0 ? ' style="border-top:none;padding-top:0"' : ''}><div style="flex:1"><div style="font-size:12.5px;font-weight:600">${esc(x.t.name)}</div><div class="ts">${x.s === 'submitted' ? 'Member says their part is done' : 'Due ' + esc(fmt(dueOf(m, x.t)))}${off ? ' · usually ' + esc(off.name) : ''}</div>${uploadsChips(m.id, x.t.id)}</div>${x.s === 'submitted' ? pill('pa', 'Ready') : x.s === 'overdue' ? pill('pr', 'Overdue') : ''}</div><div class="brow" style="justify-content:flex-end;padding-bottom:4px"><button class="ibtn" onclick="signOff('${m.id}','${x.t.id}','na')">Not needed</button><button class="sbtn" onclick="signOff('${m.id}','${x.t.id}','done')">Sign off</button></div>`; }).join('') + '</div>' : emp('ti-circle-check', m.name + ' has nothing left to sign.'));
   }
+  drawAppts('cappt', 'cbadge');
   drawTipList('ctips', S.tips.filter(t => t.tier === 'counsel' && t.base_id === me.base_id), { tier: 'counsel', btn: 'bcoun', canRemove: true });
 }
 function openCase(id) { ui.cso = id; drawCounsel(); tab('so'); }
@@ -1049,7 +1180,7 @@ function openCase(id) { ui.cso = id; drawCounsel(); tab('so'); }
 function drawMpf() {
   el('mp-name').textContent = me.name;
   el('mp-sub').textContent = baseName(me.base_id) + ' MPF';
-  drawProfiles(); drawMaster(); drawRules(); drawInbound(); drawUsers();
+  drawProfiles(); drawMaster(); drawRules(); drawAppts('bappt', 'abadge'); drawInbound(); drawUsers();
 }
 function shareButton(label) {
   return `<a class="ibtn" href="share.html" style="display:block;text-align:center;text-decoration:none;padding:9px"><i class="ti ti-share" aria-hidden="true"></i> ${esc(label)}</a>`;
@@ -1058,17 +1189,45 @@ function drawProfiles() {
   const pend = S.profiles.filter(p => p.status === 'pending' && p.base_id === me.base_id).sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
   const bg = el('bbadge'); bg.textContent = pend.length; bg.classList.toggle('on', pend.length > 0);
   const invite = shareButton('Invite members: text, email or QR code');
-  if (!pend.length) { el('bprof').innerHTML = emp('ti-user-check', 'No profiles waiting') + invite; return; }
-  el('bprof').innerHTML = invite + pend.map(a => `<div class="card"><div class="row">${avatar(a)}<div style="flex:1"><div class="tn">${esc(a.name)}</div><div class="ts">${esc(a.unit || 'No unit')} · ${esc(a.email)}</div></div>${pill('pa', 'Pending')}</div><div class="dmeta" style="margin-top:11px">${profileSummary(a)}</div>` +
+  const setup = setupCard();
+  if (!pend.length) { el('bprof').innerHTML = setup + emp('ti-user-check', 'No profiles waiting') + invite; return; }
+  const all = pend.length > 1 ? `<button class="pbtn bgreen" onclick="approveAll()">Approve all ${pend.length}</button>` : '';
+  el('bprof').innerHTML = setup + invite + all + pend.map(a => `<div class="card"><div class="row">${avatar(a)}<div style="flex:1"><div class="tn">${esc(a.name)}</div><div class="ts">${esc(a.unit || 'No unit')} · ${esc(a.email)}</div></div>${pill('pa', 'Pending')}</div><div class="dmeta" style="margin-top:11px">${profileSummary(a)}</div>` +
     (ui.returnFor === a.id ? `<label class="fl" for="rt-${a.id}">What needs fixing</label><textarea class="fi" id="rt-${a.id}" placeholder="Your departure date does not match your orders"></textarea><div class="brow"><button class="pbtn bgreen" onclick="returnProfile('${a.id}')">Send back with note</button><button class="ibtn" onclick="ui.returnFor=null;drawProfiles()">Cancel</button></div>`
       : `<div class="brow"><button class="sbtn" style="flex:1" onclick="approveProfile('${a.id}')">Approve and unlock</button><button class="ibtn dg" onclick="ui.returnFor='${a.id}';drawProfiles()">Send back</button></div>`) + '</div>').join('');
 }
-async function approveProfile(id) {
+// A short checklist for getting a base going. It ticks itself off.
+function setupCard() {
+  const base = me.base_id, b = B(base), offs = S.offices.filter(o => o.base_id === base);
+  const staffed = offs.filter(staffedOffice).length;
+  const others = S.profiles.filter(p => p.base_id === base && p.id !== me.id && p.roles.includes('member')).length;
+  const items = [
+    [S.tasks.some(t => t.base_id === base), 'Checklist and offices loaded', 'Tasks, ' + offs.length + ' offices, reminders and tips. Edit anything in Master list.', `<button class="ibtn" onclick="tab('tasks')">Master list</button>`],
+    [!!(b && b.live), 'Base open for sign-ups', hasRole('global') ? 'Lets members pick ' + baseName(base) + ' when they sign up.' : 'A global admin switches this on.', hasRole('global') ? `<button class="sbtn" onclick="openMyBase()">Open it</button>` : ''],
+    [true, 'Appointments ready', 'Every office takes bookings ' + (offs[0] ? schedLabel(offs[0]) : 'Mon–Fri, 0800–1600') + '. Members book themselves.', `<button class="ibtn" onclick="tab('appt')">Appts</button>`],
+    [offs.length > 0 && staffed === offs.length, 'Offices staffed (' + staffed + ' of ' + offs.length + ')', 'Optional. Until an office has a worker, you and the counselor handle its sign-offs and appointments.', `<button class="ibtn" onclick="tab('users')">Users</button>`],
+    [S.profiles.some(p => p.base_id === base && p.status === 'active' && p.roles.includes('sponsor')), 'At least one sponsor', 'Tick Sponsor on someone in Users, then pick them as a member’s sponsor.', `<button class="ibtn" onclick="tab('users')">Users</button>`],
+    [others > 0, 'Members invited', 'Text the link or show the QR code at a briefing.', `<a class="ibtn" href="share.html" style="text-decoration:none">Share</a>`]
+  ];
+  const done = items.filter(i => i[0]).length;
+  if (done === items.length && ui.setupHidden !== false) return '';
+  if (ui.setupHidden) return `<button class="lbtn" onclick="ui.setupHidden=false;drawProfiles()">Show getting started (${done} of ${items.length} done)</button>`;
+  return `<div class="card"><div class="row" style="margin-bottom:6px"><div style="flex:1"><div class="tn">Getting started</div><div class="ts">${done} of ${items.length} done</div></div><button class="lbtn" onclick="ui.setupHidden=true;drawProfiles()">Hide</button></div>` +
+    items.map(i => `<div class="rule"><span class="chk${i[0] ? ' ck' : ''}" aria-hidden="true">${i[0] ? '<i class="ti ti-check"></i>' : ''}</span><div style="flex:1"><div class="rt">${esc(i[1])}<span class="sr">${i[0] ? ', done' : ', not done'}</span></div><div class="ts">${esc(i[2])}</div></div>${i[0] ? '' : i[3]}</div>`).join('') + '</div>';
+}
+async function openMyBase() { if (await upd('bases', { id: me.base_id }, { live: true })) { toast(baseName(me.base_id) + ' is open for sign-ups.'); drawRole(); } }
+async function approveAll() {
+  const pend = S.profiles.filter(p => p.status === 'pending' && p.base_id === me.base_id);
+  if (!window.confirm('Approve all ' + pend.length + ' profiles? Check the details first if you are not sure.')) return;
+  for (const p of pend) await approveProfile(p.id, true);
+  toast(pend.length + ' profiles approved. Their checklists are live.'); drawMpf();
+}
+async function approveProfile(id, quiet) {
   const a = P(id);
   if (!(await upd('profiles', { id }, { status: 'active', return_note: null }))) return;
   const first = tasksFor(a, a.dir === 'in' ? 'in' : 'out')[0];
   await notify(id, 'system', 'Your profile is approved', 'Your checklist at ' + baseName(a.base_id) + ' is live.' + (first ? ' Start with ' + first.name + '.' : ''), 'approved');
-  toast(a.name + ' approved. Their checklist is live.'); drawMpf();
+  if (!quiet) { toast(a.name + ' approved. Their checklist is live.'); drawMpf(); }
 }
 async function returnProfile(id) {
   const note = val('rt-' + id).trim();
@@ -1163,10 +1322,7 @@ async function assignSponsor(memberId) {
   const sid = val('sa-' + memberId), m = P(memberId), s = P(sid);
   if (!sid) return;
   if (!(await upd('profiles', { id: memberId }, { sponsor_id: sid }))) return;
-  await notifyMany([
-    { user_id: memberId, kind: 'system', title: 'Meet your sponsor, ' + s.name.split(',')[0], body: 'Your sponsor helps you get set up at ' + baseName(m.gaining_base) + '. Say hello in Inbox, Sponsor.', dedupe_key: 'sponsor-' + sid },
-    { user_id: sid, kind: 'system', title: 'You are sponsoring ' + m.name, body: 'They report to ' + baseName(m.gaining_base) + ' by ' + fmt(m.rnltd) + '. Your prep list and messages are under Sponsor.', dedupe_key: 'sponsoring-' + memberId }
-  ]);
+  await notifySponsorPair(m, s);
   toast('Sponsor assigned and both of them notified.'); drawMpf();
 }
 function drawUsers() {
@@ -1187,8 +1343,12 @@ function drawUsers() {
       card += '<div class="af" style="margin-top:11px"><h4>Roles</h4>' + ROLE_ORDER.map(r => {
         const lock = (r === 'mpf' || r === 'global') && !hasRole('global');
         return `<label class="cbx"><input type="checkbox" id="re-${r}"${p.roles.includes(r) ? ' checked' : ''}${lock || (p.id === me.id && r === 'mpf') ? ' disabled' : ''}> ${esc(ROLE_META[r].n)}${lock ? ' (global admin only)' : ''}</label>`;
-      }).join('') + `<label class="fl" for="re-office">Office, for workers and leads</label><select class="fs" id="re-office">${opt('', 'None', !p.office_id)}${offs.map(o => opt(o.id, o.name, p.office_id === o.id)).join('')}</select><div class="brow"><button class="pbtn bgreen" onclick="saveRoles('${p.id}')">Save</button><button class="ibtn" onclick="ui.roleEdit=null;drawUsers()">Cancel</button></div></div>`;
-    } else if (p.status === 'active') card += `<div class="brow" style="margin-top:10px"><button class="ibtn" onclick="ui.roleEdit='${p.id}';drawUsers()">Edit roles and office</button></div>`;
+      }).join('') + `<label class="fl" for="re-office">Office, for workers and leads</label><select class="fs" id="re-office">${opt('', 'None', !p.office_id)}${offs.map(o => opt(o.id, o.name, p.office_id === o.id)).join('')}</select>${sponsorPicker(p)}<div class="brow"><button class="pbtn bgreen" onclick="saveRoles('${p.id}')">Save</button><button class="ibtn" onclick="ui.roleEdit=null;drawUsers()">Cancel</button></div></div>`;
+    } else if (p.status === 'active') {
+      const sp = p.sponsor_id ? P(p.sponsor_id) : null;
+      if (p.roles.includes('member')) card += `<div class="ts" style="margin-top:8px"><i class="ti ti-friends" aria-hidden="true"></i> Sponsor: ${esc(sp ? sp.name : 'none assigned')}</div>`;
+      card += `<div class="brow" style="margin-top:10px"><button class="ibtn" onclick="ui.roleEdit='${p.id}';drawUsers()">Edit roles, office and sponsor</button></div>`;
+    }
     return card + '</div>';
   }).join('');
   el('busers').innerHTML = h;
@@ -1209,12 +1369,36 @@ async function decideRole(id, yes) {
   toast(yes ? r.name + ' approved as ' + label + '.' + ((r.wanted_role === 'worker' || r.wanted_role === 'lead') ? ' Set their office in Users.' : '') : 'Request denied.');
   drawRole();
 }
+// Sponsors: anyone with the Sponsor role at this base, or at the member's gaining base.
+function sponsorCandidates(p) {
+  return S.profiles.filter(s => s.id !== p.id && s.status === 'active' && s.roles.includes('sponsor') && (s.base_id === me.base_id || (p.gaining_base && s.base_id === p.gaining_base))).sort(sortByName);
+}
+function sponsorPicker(p) {
+  if (!p.roles.includes('member')) return '';
+  const list = sponsorCandidates(p), cur = p.sponsor_id ? P(p.sponsor_id) : null;
+  if (cur && !list.includes(cur)) list.unshift(cur);
+  if (!list.length) return `<div class="dlbl">Sponsor</div><div class="ts" style="margin-bottom:11px">Nobody has the Sponsor role yet. Tick Sponsor on someone's roles first, then come back here.</div>`;
+  return `<label class="fl" for="re-sp">Sponsor${p.gaining_base ? ' (helps them settle in at ' + esc(baseName(p.gaining_base)) + ')' : ''}</label><select class="fs" id="re-sp">${opt('', 'No sponsor', !p.sponsor_id)}${list.map(s => opt(s.id, s.name + (s.base_id !== me.base_id ? ' · ' + baseName(s.base_id) : ''), s.id === p.sponsor_id)).join('')}</select>`;
+}
 async function saveRoles(id) {
   const p = P(id), roles = ROLE_ORDER.filter(r => checked('re-' + r) || (el('re-' + r) && el('re-' + r).disabled && p.roles.includes(r)));
   if (!roles.length) { toast('Pick at least one role.', 'err'); return; }
   const office = val('re-office') || null;
+  const patch = { roles, office_id: office };
+  const spEl = el('re-sp'), newSp = spEl ? (spEl.value || null) : p.sponsor_id;
+  const spChanged = spEl && newSp !== (p.sponsor_id || null);
+  if (spChanged) patch.sponsor_id = newSp;
   if ((roles.includes('worker') || roles.includes('lead')) && !office) toast('Tip: workers and leads need an office to see a queue.');
-  if (await upd('profiles', { id }, { roles, office_id: office })) { ui.roleEdit = null; toast('Saved.'); drawUsers(); }
+  if (!(await upd('profiles', { id }, patch))) return;
+  if (spChanged && newSp) await notifySponsorPair(p, P(newSp));
+  ui.roleEdit = null; toast(spChanged && newSp ? 'Saved. Sponsor assigned and both of them notified.' : 'Saved.'); drawUsers();
+}
+async function notifySponsorPair(m, s) {
+  const where = baseName(m.gaining_base || m.base_id);
+  await notifyMany([
+    { user_id: m.id, kind: 'system', title: 'Meet your sponsor, ' + s.name.split(',')[0], body: 'Your sponsor helps you get set up at ' + where + '. Say hello in Inbox, Sponsor.', dedupe_key: 'sponsor-' + s.id },
+    { user_id: s.id, kind: 'system', title: 'You are sponsoring ' + m.name, body: 'They report to ' + where + (m.rnltd ? ' by ' + fmt(m.rnltd) : '') + '. Your prep list and messages are under Sponsor.', dedupe_key: 'sponsoring-' + m.id }
+  ]);
 }
 
 // ---------------------------------------------------------------------

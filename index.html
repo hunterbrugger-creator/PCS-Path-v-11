@@ -321,7 +321,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="hdr hg"><h2 id="wk-name">Office worker</h2><p id="wk-sub"></p></div>
 <div class="nav">
 <button class="nb" id="wn-queue" onclick="tab('queue')"><i class="ti ti-clipboard-check" aria-hidden="true"></i>Queue</button>
-<button class="nb" id="wn-req" onclick="tab('req')"><i class="ti ti-calendar-event" aria-hidden="true"></i>Requests<span class="dotb" id="wbadge">0</span></button>
+<button class="nb" id="wn-req" onclick="tab('req')"><i class="ti ti-calendar-event" aria-hidden="true"></i>Appts<span class="dotb" id="wbadge">0</span></button>
 <button class="nb" id="wn-hist" onclick="tab('hist')"><i class="ti ti-history" aria-hidden="true"></i>History</button>
 <button class="nb" id="wn-tips" onclick="tab('tips')"><i class="ti ti-bulb" aria-hidden="true"></i>Tips</button>
 <button class="nb" onclick="switchRole()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Switch</button>
@@ -336,7 +336,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="hdr hl"><h2 id="ld-name">Office lead</h2><p id="ld-sub"></p></div>
 <div class="nav">
 <button class="nb" id="ln-sched" onclick="tab('sched')"><i class="ti ti-calendar" aria-hidden="true"></i>Schedule</button>
-<button class="nb" id="ln-req" onclick="tab('req')"><i class="ti ti-calendar-event" aria-hidden="true"></i>Requests<span class="dotb" id="lbadge">0</span></button>
+<button class="nb" id="ln-req" onclick="tab('req')"><i class="ti ti-calendar-event" aria-hidden="true"></i>Appts<span class="dotb" id="lbadge">0</span></button>
 <button class="nb" id="ln-queue" onclick="tab('queue')"><i class="ti ti-clipboard-check" aria-hidden="true"></i>Queue</button>
 <button class="nb" id="ln-office" onclick="tab('office')"><i class="ti ti-building" aria-hidden="true"></i>Office</button>
 <button class="nb" id="ln-tips" onclick="tab('tips')"><i class="ti ti-bulb" aria-hidden="true"></i>Tips</button>
@@ -354,11 +354,13 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="nav">
 <button class="nb" id="cn-mem" onclick="tab('mem')"><i class="ti ti-users" aria-hidden="true"></i>Members</button>
 <button class="nb" id="cn-so" onclick="tab('so')"><i class="ti ti-clipboard-check" aria-hidden="true"></i>Sign off</button>
+<button class="nb" id="cn-appt" onclick="tab('appt')"><i class="ti ti-calendar-event" aria-hidden="true"></i>Appts<span class="dotb" id="cbadge">0</span></button>
 <button class="nb" id="cn-tips" onclick="tab('tips')"><i class="ti ti-bulb" aria-hidden="true"></i>Tips</button>
 <button class="nb" onclick="switchRole()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Switch</button>
 </div>
 <div id="ct-mem" class="tab"><div class="pad" id="clist"></div></div>
 <div id="ct-so" class="tab"><div class="pad" id="cso"></div></div>
+<div id="ct-appt" class="tab"><div class="pad" id="cappt"></div></div>
 <div id="ct-tips" class="tab"><div class="pad" id="ctips"></div></div>
 </div>
 
@@ -367,6 +369,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="nav">
 <button class="nb" id="bn-prof" onclick="tab('prof')"><i class="ti ti-user-plus" aria-hidden="true"></i>Profiles<span class="dotb" id="bbadge">0</span></button>
 <button class="nb" id="bn-tasks" onclick="tab('tasks')"><i class="ti ti-list-details" aria-hidden="true"></i>Master list</button>
+<button class="nb" id="bn-appt" onclick="tab('appt')"><i class="ti ti-calendar-event" aria-hidden="true"></i>Appts<span class="dotb" id="abadge">0</span></button>
 <button class="nb" id="bn-inb" onclick="tab('inb')"><i class="ti ti-plane-arrival" aria-hidden="true"></i>Inbound</button>
 <button class="nb" id="bn-users" onclick="tab('users')"><i class="ti ti-users" aria-hidden="true"></i>Users<span class="dotb" id="ubadge">0</span></button>
 <button class="nb" onclick="switchRole()"><i class="ti ti-arrows-exchange" aria-hidden="true"></i>Switch</button>
@@ -386,6 +389,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 <div class="intro" style="padding-top:8px">Sent to members in the app. Switch off any you do not want from this base.</div>
 <div class="pad" id="brules"></div>
 </div>
+<div id="bt-appt" class="tab"><div class="pad" id="bappt"></div></div>
 <div id="bt-inb" class="tab">
 <div class="intro">Members inbound to this base. Their in-processing checklist unlocks when the losing base signs their MPF final out.</div>
 <div class="pad" id="binbound"></div>
@@ -425,9 +429,9 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 </div>
 
 </div>
-<script src="config.js"></script>
-<script src="seed.js"></script>
-<script src="store.js"></script>
-<script src="app.js"></script>
+<script src="config.js?v=13"></script>
+<script src="seed.js?v=13"></script>
+<script src="store.js?v=13"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

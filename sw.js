@@ -2,7 +2,7 @@
 // App files: network first (so updates show up), falling back to the saved copy.
 // Icons and the Supabase library from the CDN: saved copy first.
 // Database calls are never cached here; store.js keeps its own offline copy.
-const CACHE = 'pcspath-v12c';
+const CACHE = 'pcspath-v13';
 const SHELL = ['./', './index.html', './app.js', './store.js', './seed.js', './config.js', './manifest.webmanifest', './icon.svg', './share.html'];
 
 self.addEventListener('install', e => {
@@ -26,7 +26,7 @@ self.addEventListener('fetch', e => {
     e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {
       if (res.ok) { const copy = res.clone(); caches.open(CACHE).then(c => c.put(req, copy)); }
       return res;
-    }).catch(() => caches.match(req).then(r => r || caches.match('./index.html'))));
+    }).catch(() => caches.match(req, { ignoreSearch: true }).then(r => r || caches.match('./index.html'))));
     return;
   }
 
