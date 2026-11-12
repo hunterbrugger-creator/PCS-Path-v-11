@@ -8,6 +8,6 @@
 // designed to be public; the database's row level security rules decide who
 // can see and change what. Never put the "service_role" / secret key here.
 window.PCS_CONFIG = {
-  supabaseUrl: '',
-  supabaseAnonKey: ''
+  supabaseUrl: 'https://woutdyofkoqakaorhllu.supabase.co',
+  supabaseAnonKey: 'sb_publishable_fI5iLQvEfKwDuhzdF-hcAQ_KF46q8nF'
 };
